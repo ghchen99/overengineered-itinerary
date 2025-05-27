@@ -1,0 +1,173 @@
+KAYAK FLIGHT SEARCH RESULTS
+==================================================
+
+Total flights found: 16
+Search time: 2025-05-27 23:39:22
+
+Price range: £505 - £684
+Average price: £610
+
+Airlines found: Air France, Cathay Pacific, China Eastern, Thai Airways
+
+FLIGHT DETAILS:
+------------------------------
+
+Flight 1:
+  Airline: Thai Airways
+  Price: £542
+  Outbound: 12:30 - 11:45
+  Duration: 16h 15m
+  Stops: 1 stop
+  Return: 08:30 - 18:05
+  Return Duration: 16h 35m
+  Fare Class: Economy
+
+Flight 2:
+  Airline: Cathay Pacific
+  Price: £637
+  Outbound: 17:00 - 12:35
+  Duration: 12h 35m
+  Stops: direct
+  Return: 08:05 - 15:15
+  Return Duration: 14h 10m
+  Fare Class: None
+
+Flight 3:
+  Airline: China Eastern
+  Price: £505
+  Outbound: 21:20 - 23:45
+  Duration: 19h 25m
+  Stops: 1 stop
+  Return: 07:30 - 18:40
+  Return Duration: 18h 10m
+  Fare Class: None
+
+Flight 4:
+  Airline: Cathay Pacific
+  Price: £637
+  Outbound: 17:00 - 12:35
+  Duration: 12h 35m
+  Stops: direct
+  Return: 11:05 - 18:15
+  Return Duration: 14h 10m
+  Fare Class: None
+
+Flight 5:
+  Airline: Cathay Pacific
+  Price: £637
+  Outbound: 17:00 - 12:35
+  Duration: 12h 35m
+  Stops: direct
+  Return: 13:25 - 20:35
+  Return Duration: 14h 10m
+  Fare Class: None
+
+Flight 6:
+  Airline: Cathay Pacific
+  Price: £637
+  Outbound: 12:20 - 07:55
+  Duration: 12h 35m
+  Stops: direct
+  Return: 08:05 - 15:15
+  Return Duration: 14h 10m
+  Fare Class: None
+
+Flight 7:
+  Airline: Cathay Pacific
+  Price: £637
+  Outbound: 12:20 - 07:55
+  Duration: 12h 35m
+  Stops: direct
+  Return: 13:25 - 20:35
+  Return Duration: 14h 10m
+  Fare Class: None
+
+Flight 8:
+  Airline: Cathay Pacific
+  Price: £637
+  Outbound: 12:20 - 07:55
+  Duration: 12h 35m
+  Stops: direct
+  Return: 11:05 - 18:15
+  Return Duration: 14h 10m
+  Fare Class: None
+
+Flight 9:
+  Airline: China Eastern
+  Price: £521
+  Outbound: 21:20 - 21:05
+  Duration: 16h 45m
+  Stops: 1 stop
+  Return: 07:30 - 18:40
+  Return Duration: 18h 10m
+  Fare Class: None
+
+Flight 10:
+  Airline: Cathay Pacific
+  Price: £660
+  Outbound: 17:00 - 12:35
+  Duration: 12h 35m
+  Stops: direct
+  Return: 23:15 - 06:20
+  Return Duration: 14h 05m
+  Fare Class: None
+
+Flight 11:
+  Airline: Thai Airways
+  Price: £541
+  Outbound: 12:30 - 11:45
+  Duration: 16h 15m
+  Stops: 1 stop
+  Return: 08:30 - 18:05
+  Return Duration: 16h 35m
+  Fare Class: None
+
+Flight 12:
+  Airline: Cathay Pacific
+  Price: £660
+  Outbound: 12:20 - 07:55
+  Duration: 12h 35m
+  Stops: direct
+  Return: 23:15 - 06:20
+  Return Duration: 14h 05m
+  Fare Class: None
+
+Flight 13:
+  Airline: Air France
+  Price: £582
+  Outbound: 19:45 - 17:30
+  Duration: 14h 45m
+  Stops: 1 stop
+  Return: 22:20 - 08:00
+  Return Duration: 16h 40m
+  Fare Class: None
+
+Flight 14:
+  Airline: Cathay Pacific
+  Price: £684
+  Outbound: 17:00 - 12:35
+  Duration: 12h 35m
+  Stops: direct
+  Return: 22:40 - 05:40
+  Return Duration: 14h 00m
+  Fare Class: None
+
+Flight 15:
+  Airline: Air France
+  Price: £565
+  Outbound: 17:35 - 17:30
+  Duration: 16h 55m
+  Stops: 1 stop
+  Return: 22:20 - 08:00
+  Return Duration: 16h 40m
+  Fare Class: None
+
+Flight 16:
+  Airline: Cathay Pacific
+  Price: £684
+  Outbound: 12:20 - 07:55
+  Duration: 12h 35m
+  Stops: direct
+  Return: 22:40 - 05:40
+  Return Duration: 14h 00m
+  Fare Class: None
