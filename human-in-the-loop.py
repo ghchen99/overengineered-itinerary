@@ -225,19 +225,7 @@ Click on any of these links to view current flight options, prices, and availabi
 
 
 def find_airbnb_accommodation(destination: str, checkin: str = None, checkout: str = None, guests: int = 2) -> str:
-    """
-    Generate Airbnb search URL for accommodation in a specific destination.
-    This tool provides direct links to Airbnb for finding unique stays and local experiences.
-    
-    Args:
-        destination (str): Destination city or area (e.g., "Paris", "Tokyo", "Barcelona")
-        checkin (str): Check-in date in YYYY-MM-DD format (defaults to tomorrow)
-        checkout (str): Check-out date in YYYY-MM-DD format (defaults to 5 days after check-in)
-        guests (int): Number of guests (defaults to 2)
-    
-    Returns:
-        str: Formatted message with clickable Airbnb search URL
-    """
+    """Generate Airbnb search URL for accommodation in a destination."""
     # Set default dates if not provided
     if not checkin:
         checkin_datetime = datetime.now() + timedelta(days=1)
@@ -251,32 +239,30 @@ def find_airbnb_accommodation(destination: str, checkin: str = None, checkout: s
         print(f"Generating Airbnb search URL for {destination}")
         print(f"Check-in: {checkin}, Check-out: {checkout}, Guests: {guests}")
         
-        # URL encode the destination to handle spaces and special characters
-        encoded_destination = urllib.parse.quote(destination)
+        # Format destination for Airbnb URLs (replace commas with --)
+        formatted_destination = destination.replace(",", "--").replace(" ", "-")
         
         # Generate Airbnb search URL
-        airbnb_url = f"https://www.airbnb.co.uk/s/{encoded_destination}/homes?checkin={checkin}&checkout={checkout}&adults={guests}"
+        airbnb_url = f"https://www.airbnb.co.uk/s/{formatted_destination}/homes?checkin={checkin}&checkout={checkout}&adults={guests}"
         
-        # Format the response message
         response_message = f"""Here's your Airbnb search link for {destination} ({checkin} to {checkout}) for {guests} guest(s):
 
 🏠 **Airbnb** (Unique stays and local experiences):
 {airbnb_url}
 
-Click the link above to browse available accommodations including:
-- Entire homes and apartments for privacy and space
-- Private rooms in local homes for cultural immersion  
-- Unique properties like castles, treehouses, and boats
-- Local experiences and activities hosted by residents
-
-Airbnb is perfect for longer stays, group travel, or when you want to live like a local in your destination!"""
+Click the link to browse:
+- Entire homes and apartments
+- Private rooms in local homes
+- Unique properties and experiences
+- Local neighborhood stays"""
         
         return response_message
         
     except Exception as e:
-        error_msg = f"An error occurred while generating Airbnb URL for {destination}: {str(e)}"
+        error_msg = f"Error generating Airbnb URL for {destination}: {str(e)}"
         print(error_msg)
         return error_msg
+
 
 
 def create_model_client():

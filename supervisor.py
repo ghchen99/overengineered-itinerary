@@ -97,53 +97,6 @@ def perform_slow_scroll(driver, max_scrolls=4, scroll_increment=500, scroll_paus
     print(f"Scrolling completed after {max_scrolls} scrolls.")
 
 
-def search_attraction_images(attraction_name: str) -> str:
-    """Search for attraction images on Google Images and scroll through results."""
-    driver = None
-    try:
-        print(f"Searching for images of: {attraction_name}")
-        driver = setup_chrome_driver()
-        
-        # Navigate to Google Images
-        driver.get("https://images.google.com")
-        time.sleep(2)
-        
-        # Handle cookie consent
-        handle_cookie_consent(driver)
-        
-        # Find search box and enter query
-        print("Entering search query...")
-        search_box = driver.find_element(By.NAME, "q")
-        search_box.clear()
-        search_box.send_keys(attraction_name)
-        search_box.send_keys(Keys.RETURN)
-        
-        # Wait for results to load
-        print("Waiting for search results...")
-        time.sleep(4)
-        
-        # Perform slow scroll through images
-        perform_slow_scroll(driver)
-        
-        print("Waiting for 2 seconds before closing...")
-        time.sleep(2)
-        
-        return f"Successfully displayed images of {attraction_name}. The browser showed various photos to help visualize this destination."
-        
-    except Exception as e:
-        error_msg = f"Error searching for images of {attraction_name}: {str(e)}"
-        print(error_msg)
-        return error_msg
-    
-    finally:
-        if driver:
-            try:
-                driver.quit()
-                print("Browser closed successfully.")
-            except:
-                print("Browser was already closed.")
-
-
 def view_flights(from_location: str = "LHR", to_location: str = "HKG", 
                 depart_date: str = None, return_date: str = None) -> str:
     """Generate flight search URLs for easy access to booking sites."""
@@ -201,11 +154,11 @@ def find_airbnb_accommodation(destination: str, checkin: str = None, checkout: s
         print(f"Generating Airbnb search URL for {destination}")
         print(f"Check-in: {checkin}, Check-out: {checkout}, Guests: {guests}")
         
-        # URL encode the destination
-        encoded_destination = urllib.parse.quote(destination)
+        # Format destination for Airbnb URLs (replace commas with --)
+        formatted_destination = destination.replace(",", "--").replace(" ", "-")
         
         # Generate Airbnb search URL
-        airbnb_url = f"https://www.airbnb.co.uk/s/{encoded_destination}/homes?checkin={checkin}&checkout={checkout}&adults={guests}"
+        airbnb_url = f"https://www.airbnb.co.uk/s/{formatted_destination}/homes?checkin={checkin}&checkout={checkout}&adults={guests}"
         
         response_message = f"""Here's your Airbnb search link for {destination} ({checkin} to {checkout}) for {guests} guest(s):
 
@@ -226,6 +179,7 @@ Click the link to browse:
         return error_msg
 
 
+
 def create_model_client():
     """Create and return the Azure OpenAI model client."""
     return AzureOpenAIChatCompletionClient(
@@ -240,23 +194,37 @@ def create_model_client():
 def create_travel_supervisor_team(model_client):
     """Create a supervisor-managed team of travel specialists."""
     
-    # Images Agent - Shows visual content of attractions
-    images_agent = AssistantAgent(
-        name="ImagesAgent",
-        description="Specializes in showing visual content of travel destinations and attractions.",
-        system_message="""You are a visual content specialist for travel planning.
-Your job is to show images of destinations, attractions, and landmarks to help travelers visualize their trip.
+    # Itinerary Agent - Creates detailed day-by-day schedules and city recommendations
+    itinerary_agent = AssistantAgent(
+        name="ItineraryAgent",
+        description="Specializes in creating detailed day-by-day itineraries and recommending cities to stay in.",
+        system_message="""You are an expert itinerary planner and city recommendation specialist.
+Your job is to create detailed day-by-day schedules and recommend the best cities/areas to stay in for travelers.
 
-When directed to show images:
-1. Use the search_attraction_images tool to display visual content
-2. Focus on the specific attraction, landmark, or destination mentioned
-3. Provide brief context about what the images show
-4. Help travelers get excited about their potential destination
+When directed to create an itinerary:
+1. Recommend optimal cities/neighborhoods to base yourself in
+2. Create realistic daily schedules with morning, afternoon, and evening activities
+3. Consider travel logistics between different areas
+4. Balance must-see attractions with authentic local experiences
+5. Provide practical tips for navigation and booking
+6. Consider the traveler's interests, budget, and travel style
 
-Always use the search_attraction_images tool when asked to show visual content.
-Keep your responses concise and focused on the visual experience.""",
+Your itineraries should include:
+- Strategic city/area recommendations for accommodation
+- Day-by-day detailed schedules
+- Transportation advice between locations
+- Booking tips and advance planning needs
+- Mix of popular attractions and hidden gems
+- Cultural experiences and local food recommendations
+
+Format your response with:
+🗺️ **DETAILED [X]-DAY ITINERARY FOR [DESTINATION]**
+📍 **Recommended Cities/Areas to Stay**
+📅 **DAY-BY-DAY SCHEDULE**
+💡 **TRAVEL TIPS**
+
+Keep recommendations practical, well-organized, and tailored to the specific destination and traveler preferences.""",
         model_client=model_client,
-        tools=[search_attraction_images],
     )
     
     # Flights Agent - Provides flight booking links
@@ -305,7 +273,7 @@ Focus on providing actionable booking links and practical lodging advice.""",
         
         last_message = messages[-1]
         # Return to supervisor after any specialist agent responds
-        if last_message.source in ["ImagesAgent", "FlightsAgent", "AccommodationAgent"]:
+        if last_message.source in ["ItineraryAgent", "FlightsAgent", "AccommodationAgent"]:
             return "TravelSupervisor"
         
         # Let LLM decide when supervisor was last to speak
@@ -319,13 +287,13 @@ Your job is to coordinate the team to provide comprehensive travel assistance.
 
 Use these specific instruction formats:
 
-1. For showing images: "@ImagesAgent: show images of [specific attraction/destination]"
+1. For creating itinerary: "@ItineraryAgent: create an itinerary for the trip to [specific attraction/destination] for [duration] days."
 2. For flights: "@FlightsAgent: find flights from [origin] to [destination] departing [date] returning [date]"  
 3. For accommodation: "@AccommodationAgent: find Airbnb accommodation in [destination] from [checkin] to [checkout] for [guests] guests"
 
 Your workflow:
 1. Understand the user's travel request (destination, dates, preferences)
-2. Direct ImagesAgent to show visual content of key attractions
+2. Direct ItineraryAgent to show visual content of key attractions
 3. Direct FlightsAgent to provide flight booking links
 4. Direct AccommodationAgent to provide Airbnb accommodation links
 5. Synthesize all information into a cohesive travel plan
@@ -341,7 +309,7 @@ End your final response with "TRAVEL PLANNING COMPLETE" when finished.""",
     
     # Create supervisor team
     team = SelectorGroupChat(
-        participants=[supervisor_agent, images_agent, flights_agent, accommodation_agent],
+        participants=[supervisor_agent, itinerary_agent, flights_agent, accommodation_agent],
         model_client=model_client,
         termination_condition=termination,
         selector_func=supervisor_selector,
@@ -375,7 +343,7 @@ async def main():
     
     # Example travel request
     travel_request = """
-    I want to plan a trip to Tokyo, Japan for 7 days in October. 
+    I want to plan a trip to Tokyo, Japan for 7 days in October 2025. 
     I'll be traveling from London (LHR). I'm interested in seeing temples, 
     trying authentic Japanese food, and experiencing the city culture.
     I need help with flights, accommodation, and I'd love to see what some 
