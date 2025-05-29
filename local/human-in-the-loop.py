@@ -1,12 +1,5 @@
 import os
 import asyncio
-import time
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
 from autogen_agentchat.agents import AssistantAgent
 from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
 from datetime import datetime, timedelta
@@ -274,10 +267,11 @@ async def main():
     from autogen_agentchat.agents import UserProxyAgent
     from autogen_agentchat.teams import RoundRobinGroupChat
     from autogen_agentchat.ui import Console
+    from autogen_agentchat.conditions import TextMentionTermination
     
     print("🌍✈️🏠 Welcome to your Complete Travel Planning Advisor!")
     print("I can help you choose amazing destinations, show you images, provide flight links, and find accommodation!")
-    print("Starting interactive session... (type 'TERMINATE' to quit)\n")
+    print("Starting interactive session... (type 'EXIT' to quit)\n")
     
     # Create a user proxy agent to handle human input
     user_proxy = UserProxyAgent(
@@ -286,7 +280,8 @@ async def main():
     )
     
     # Create a team with both the travel agent and user proxy
-    team = RoundRobinGroupChat([user_proxy, travel_destination_agent])
+    team = RoundRobinGroupChat(participants=[user_proxy, travel_destination_agent],
+                               termination_condition=TextMentionTermination("EXIT"))  # Limit to 100 turns to prevent infinite loops)
     
     # Use Console with the team for proper conversation flow
     await Console(team.run_stream())
