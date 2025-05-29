@@ -1,5 +1,6 @@
 import os
 import asyncio
+import re
 from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.teams import RoundRobinGroupChat
 from autogen_agentchat.conditions import MaxMessageTermination, TextMentionTermination
@@ -81,6 +82,24 @@ def find_airbnb_accommodation(destination: str, checkin: str = None, checkout: s
         return error_msg
 
 
+def add_image_links(location_name: str) -> str:
+    """Generate Google Images search URL for a location."""
+    try:
+        # Clean the location name for URL encoding
+        clean_name = location_name.strip()
+        # URL encode the location name
+        encoded_name = clean_name.replace(" ", "+").replace(",", "%2C")
+        
+        # Generate Google Images search URL
+        image_url = f"https://www.google.com/search?q={encoded_name}&tbm=isch"
+        
+        return image_url
+        
+    except Exception as e:
+        print(f"Error generating image URL for {location_name}: {str(e)}")
+        return ""
+
+
 def create_model_client():
     """Create and return the Azure OpenAI model client."""
     return AzureOpenAIChatCompletionClient(
@@ -144,8 +163,38 @@ Use this EXACT structure:
 [Include local tips, booking advice, cultural notes]
 ```
 
-After creating the document, end with: "ITINERARY_COMPLETE - Ready for FlightsAgent".""",
+After creating the document, end with: "ITINERARY_COMPLETE - Ready for ImagesAgent".""",
         model_client=model_client,
+    )
+    
+    # Images Agent - Adds Google image search links to notable locations in the itinerary
+    images_agent = AssistantAgent(
+        name="ImagesAgent",
+        description="Adds Google image search links to notable locations in the Day-by-Day Itinerary section.",
+        system_message="""You are the images specialist. You will receive a complete travel document with a detailed itinerary.
+
+Your job is to:
+1. Take the ENTIRE existing travel document
+2. Identify notable locations, attractions, temples, landmarks, restaurants, and places mentioned in the "## 📅 Day-by-Day Itinerary" section ONLY
+3. Use the add_image_links tool to get Google Images URLs for these locations
+4. Replace location names with markdown links that include the Google Images search
+5. Return the COMPLETE updated document with enhanced itinerary links
+
+CRITICAL RULES:
+- ONLY modify the "## 📅 Day-by-Day Itinerary" section
+- Keep everything else exactly the same
+- Format should be: [Location Name](Google Images URL)
+- Only add links to specific places, attractions, landmarks, temples, restaurants, etc.
+- Don't add links to generic words like "train", "hotel", "lunch"
+
+Example transformations:
+- "Visit Senso-ji Temple" → "Visit [Senso-ji Temple](https://www.google.com/search?q=Senso-ji+Temple&tbm=isch)"
+- "Explore Shibuya district" → "Explore [Shibuya district](https://www.google.com/search?q=Shibuya+district&tbm=isch)"
+- "Take an early train to Nikko" → "Take an early train to [Nikko](https://www.google.com/search?q=Nikko&tbm=isch)"
+
+After updating, end with: "IMAGES_COMPLETE - Ready for FlightsAgent".""",
+        model_client=model_client,
+        tools=[add_image_links],
     )
     
     # Flights Agent - Replaces flight placeholder with actual flight information
@@ -208,7 +257,8 @@ Your job is to:
 1. Review the complete travel document for quality and completeness
 2. Ensure no placeholders remain (no "<!-- PLACEHOLDER -->" text)
 3. Verify all sections are properly filled
-4. Output "DOCUMENT_READY" followed by the final, clean markdown document
+4. Verify that notable locations in the itinerary have Google Images links
+5. Output "DOCUMENT_READY" followed by the final, clean markdown document
 
 If the document is complete and properly formatted, respond with:
 DOCUMENT_READY
@@ -220,13 +270,13 @@ If anything is missing or incorrect, provide specific feedback on what needs to 
     )
     
     # Combined termination conditions
-    max_msg_termination = MaxMessageTermination(max_messages=20)
+    max_msg_termination = MaxMessageTermination(max_messages=25)
     text_termination = TextMentionTermination("DOCUMENT_READY")
     combined_termination = max_msg_termination | text_termination
     
     # Create sequential team using RoundRobinGroupChat
     team = RoundRobinGroupChat(
-        participants=[itinerary_agent, flights_agent, accommodation_agent, critic_agent],
+        participants=[itinerary_agent, images_agent, flights_agent, accommodation_agent, critic_agent],
         termination_condition=combined_termination,
     )
     
