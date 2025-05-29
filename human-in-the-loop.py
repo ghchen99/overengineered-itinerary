@@ -6,13 +6,10 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from autogen_agentchat.agents import AssistantAgent
 from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
 from datetime import datetime, timedelta
-import urllib.parse
 
 
 def setup_chrome_driver():
@@ -184,14 +181,33 @@ def view_flights(from_location: str = "LHR", to_location: str = "HKG",
     Returns:
         str: Formatted message with clickable URLs for flight searches
     """
-    # Set default dates if not provided
+    # Get current year for defaults
+    current_year = datetime.now().year
+    
+    # Set default dates if not provided, ensure current year is used
     if not depart_date:
-        depart_datetime = datetime.now() + timedelta(days=1)
+        depart_datetime = datetime(current_year, datetime.now().month, datetime.now().day) + timedelta(days=1)
         depart_date = depart_datetime.strftime("%Y-%m-%d")
+    else:
+        # If date provided but year seems old, update to current year
+        depart_parsed = datetime.strptime(depart_date, "%Y-%m-%d")
+        if depart_parsed.year < current_year:
+            depart_parsed = depart_parsed.replace(year=current_year)
+            depart_date = depart_parsed.strftime("%Y-%m-%d")
     
     if not return_date:
         return_datetime = datetime.strptime(depart_date, "%Y-%m-%d") + timedelta(days=4)
         return_date = return_datetime.strftime("%Y-%m-%d")
+    else:
+        # If date provided but year seems old, update to current year
+        return_parsed = datetime.strptime(return_date, "%Y-%m-%d")
+        depart_parsed = datetime.strptime(depart_date, "%Y-%m-%d")
+        if return_parsed.year < current_year:
+            return_parsed = return_parsed.replace(year=current_year)
+        # If return date is before departure date, assume next year
+        if return_parsed < depart_parsed:
+            return_parsed = return_parsed.replace(year=return_parsed.year + 1)
+        return_date = return_parsed.strftime("%Y-%m-%d")
     
     try:
         print(f"Generating flight search URLs from {from_location} to {to_location}")
@@ -226,14 +242,33 @@ Click on any of these links to view current flight options, prices, and availabi
 
 def find_airbnb_accommodation(destination: str, checkin: str = None, checkout: str = None, guests: int = 2) -> str:
     """Generate Airbnb search URL for accommodation in a destination."""
-    # Set default dates if not provided
+    # Get current year for defaults
+    current_year = datetime.now().year
+    
+    # Set default dates if not provided, ensure current year is used
     if not checkin:
-        checkin_datetime = datetime.now() + timedelta(days=1)
+        checkin_datetime = datetime(current_year, datetime.now().month, datetime.now().day) + timedelta(days=1)
         checkin = checkin_datetime.strftime("%Y-%m-%d")
+    else:
+        # If date provided but year seems old, update to current year
+        checkin_parsed = datetime.strptime(checkin, "%Y-%m-%d")
+        if checkin_parsed.year < current_year:
+            checkin_parsed = checkin_parsed.replace(year=current_year)
+            checkin = checkin_parsed.strftime("%Y-%m-%d")
     
     if not checkout:
         checkout_datetime = datetime.strptime(checkin, "%Y-%m-%d") + timedelta(days=4)
         checkout = checkout_datetime.strftime("%Y-%m-%d")
+    else:
+        # If date provided but year seems old, update to current year
+        checkout_parsed = datetime.strptime(checkout, "%Y-%m-%d")
+        checkin_parsed = datetime.strptime(checkin, "%Y-%m-%d")
+        if checkout_parsed.year < current_year:
+            checkout_parsed = checkout_parsed.replace(year=current_year)
+        # If checkout date is before checkin date, assume next year
+        if checkout_parsed < checkin_parsed:
+            checkout_parsed = checkout_parsed.replace(year=checkout_parsed.year + 1)
+        checkout = checkout_parsed.strftime("%Y-%m-%d")
     
     try:
         print(f"Generating Airbnb search URL for {destination}")
@@ -352,15 +387,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    # You can test individual functions:
-    # result = search_attraction_images("Eiffel Tower")
-    # print(result)
-    # 
-    # result = view_flights("LHR", "HKG", "2025-07-01", "2025-07-10")
-    # print(result)
-    #
-    # result = find_airbnb_accommodation("Paris", "2025-07-01", "2025-07-08", 4)
-    # print(result)
-    
-    # Run the main agent interaction
     asyncio.run(main())
