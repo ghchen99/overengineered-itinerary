@@ -12,158 +12,64 @@ from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
 from datetime import datetime, timedelta
 
 
-def setup_chrome_driver():
+def search_attraction_images(attractions: list, country: str = "") -> str:
     """
-    Set up Chrome driver with common options for web automation.
-    
-    Returns:
-        webdriver.Chrome: Configured Chrome driver instance
-    """
-    chrome_options = Options()
-    chrome_options.add_argument("--start-maximized")
-    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    chrome_options.add_experimental_option('useAutomationExtension', False)
-    chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-    
-    service = Service(ChromeDriverManager().install())
-    return webdriver.Chrome(service=service, options=chrome_options)
-
-
-def handle_cookie_consent(driver):
-    """
-    Handle cookie consent popups commonly found on websites.
+    Generate Google Images search URLs for a list of attractions to help users visualize destinations.
+    This tool provides direct links to image searches for easy access and inspiration.
     
     Args:
-        driver: Selenium webdriver instance
-        
-    Returns:
-        bool: True if cookie popup was handled, False otherwise
-    """
-    print("Looking for cookie consent popup...")
-    
-    reject_selectors = [
-        "//button[contains(text(), 'Reject all')]",
-        "//button[contains(text(), 'I disagree')]", 
-        "//div[contains(text(), 'Reject all')]//ancestor::button",
-        "//button[@aria-label='Reject all']",
-        "//button[.//div[contains(text(), 'Reject all')]]",
-        "[data-testid='uc-reject-all-button']",
-        "//div[text()='Reject all']/parent::button"
-    ]
-    
-    for selector in reject_selectors:
-        try:
-            reject_button = driver.find_element(By.XPATH, selector)
-            if reject_button.is_displayed():
-                driver.execute_script("arguments[0].click();", reject_button)
-                print("Rejected cookies successfully")
-                time.sleep(2)
-                return True
-        except:
-            continue
-    
-    print("No cookie popup found - continuing...")
-    return False
-
-
-def perform_slow_scroll(driver, max_scrolls=4, scroll_increment=500, scroll_pause_time=2.5):
-    """
-    Perform slow, smooth scrolling to view content on a webpage.
-    
-    Args:
-        driver: Selenium webdriver instance
-        max_scrolls (int): Maximum number of scrolls to perform
-        scroll_increment (int): Pixels to scroll each time
-        scroll_pause_time (float): Seconds to pause between scrolls
-    """
-    print(f"Starting slow scroll through content...")
-    
-    for scroll_count in range(max_scrolls):
-        print(f"Scroll {scroll_count + 1}/{max_scrolls}")
-        
-        current_scroll = driver.execute_script("return window.pageYOffset;")
-        
-        driver.execute_script(f"""
-            window.scrollTo({{
-                top: {current_scroll + scroll_increment},
-                behavior: 'smooth'
-            }});
-        """)
-        
-        time.sleep(scroll_pause_time)
-        
-        # Try to load more content if available (for images)
-        try:
-            load_more_elements = driver.find_elements(By.CSS_SELECTOR, 
-                "input[value='Show more results'], [jsaction*='more'], .mye4qd")
-            if load_more_elements:
-                for element in load_more_elements:
-                    if element.is_displayed():
-                        driver.execute_script("arguments[0].click();", element)
-                        print("Loading more content...")
-                        time.sleep(2)
-                        break
-        except:
-            pass
-    
-    print(f"Scrolling completed after {max_scrolls} scrolls.")
-
-
-def search_attraction_images(attraction_name: str) -> str:
-    """
-    Search for an attraction on Google Images and slowly scroll through results.
-    This tool helps users visualize destinations and landmarks they're considering.
-    
-    Args:
-        attraction_name (str): Name of the attraction or destination to search for
+        attractions (list): List of attraction names to search for
+        country (str): Country name to add context to searches (optional)
     
     Returns:
-        str: Status message about the image search operation
+        str: Formatted message with clickable URLs for image searches
     """
-    driver = None
     try:
-        print(f"Searching for images of: {attraction_name}")
-        driver = setup_chrome_driver()
+        print(f"Generating image search URLs for {len(attractions)} attractions in {country}")
         
-        # Navigate to Google Images
-        driver.get("https://images.google.com")
-        time.sleep(2)
+        if not attractions:
+            return "No attractions provided for image search."
         
-        # Handle cookie consent
-        handle_cookie_consent(driver)
+        # Build the response message
+        country_text = f" in {country}" if country else ""
+        response_message = f"""Here are Google Images links to help you visualize these amazing attractions{country_text}:
+
+"""
         
-        # Find search box and enter query
-        print("Entering search query...")
-        search_box = driver.find_element(By.NAME, "q")
-        search_box.clear()
-        search_box.send_keys(attraction_name)
-        search_box.send_keys(Keys.RETURN)
+        for i, attraction in enumerate(attractions, 1):
+            # Create search query - include country for better context if provided
+            search_query = f"{attraction} {country}".strip() if country else attraction
+            
+            # URL encode the search query
+            import urllib.parse
+            encoded_query = urllib.parse.quote(search_query)
+            
+            # Generate Google Images URL
+            google_images_url = f"https://www.google.com/search?q={encoded_query}&tbm=isch"
+            
+            # Add to response message with emoji
+            emoji = "🏛️" if any(word in attraction.lower() for word in ["temple", "church", "cathedral", "mosque"]) else \
+                   "🏰" if any(word in attraction.lower() for word in ["castle", "palace", "fort"]) else \
+                   "🗼" if any(word in attraction.lower() for word in ["tower", "bridge", "statue"]) else \
+                   "🏞️" if any(word in attraction.lower() for word in ["park", "garden", "lake", "mountain", "beach"]) else \
+                   "🏛️" if any(word in attraction.lower() for word in ["museum", "gallery"]) else \
+                   "📍"
+            
+            response_message += f"{emoji} **{attraction}**:\n{google_images_url}\n\n"
         
-        # Wait for results to load
-        print("Waiting for search results...")
-        time.sleep(4)
+        response_message += """Click on any link to view stunning photos and get inspired for your trip! Each search will show you:
+- Professional travel photography
+- Different angles and perspectives  
+- Seasonal variations
+- Tourist experiences and activities
+- Nearby attractions and views"""
         
-        # Perform slow scroll through images
-        perform_slow_scroll(driver)
-        
-        print("Waiting for 2 seconds before closing...")
-        time.sleep(2)
-        
-        return f"Successfully displayed images of {attraction_name}. The browser showed various photos and views of this destination to help you visualize what it looks like."
+        return response_message
         
     except Exception as e:
-        error_msg = f"An error occurred while searching for images of {attraction_name}: {str(e)}"
+        error_msg = f"An error occurred while generating image search URLs: {str(e)}"
         print(error_msg)
         return error_msg
-    
-    finally:
-        if driver:
-            try:
-                driver.quit()
-                print("Browser closed successfully.")
-            except:
-                print("Browser was already closed.")
 
 
 def view_flights(from_location: str = "LHR", to_location: str = "HKG", 
