@@ -1,172 +1,68 @@
 import os
 import asyncio
-import time
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
 from autogen_agentchat.agents import AssistantAgent
 from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
 from datetime import datetime, timedelta
-import urllib.parse
 
 
-def setup_chrome_driver():
+def search_attraction_images(attractions: list, country: str = "") -> str:
     """
-    Set up Chrome driver with common options for web automation.
-    
-    Returns:
-        webdriver.Chrome: Configured Chrome driver instance
-    """
-    chrome_options = Options()
-    chrome_options.add_argument("--start-maximized")
-    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    chrome_options.add_experimental_option('useAutomationExtension', False)
-    chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-    
-    service = Service(ChromeDriverManager().install())
-    return webdriver.Chrome(service=service, options=chrome_options)
-
-
-def handle_cookie_consent(driver):
-    """
-    Handle cookie consent popups commonly found on websites.
+    Generate Google Images search URLs for a list of attractions to help users visualize destinations.
+    This tool provides direct links to image searches for easy access and inspiration.
     
     Args:
-        driver: Selenium webdriver instance
-        
-    Returns:
-        bool: True if cookie popup was handled, False otherwise
-    """
-    print("Looking for cookie consent popup...")
-    
-    reject_selectors = [
-        "//button[contains(text(), 'Reject all')]",
-        "//button[contains(text(), 'I disagree')]", 
-        "//div[contains(text(), 'Reject all')]//ancestor::button",
-        "//button[@aria-label='Reject all']",
-        "//button[.//div[contains(text(), 'Reject all')]]",
-        "[data-testid='uc-reject-all-button']",
-        "//div[text()='Reject all']/parent::button"
-    ]
-    
-    for selector in reject_selectors:
-        try:
-            reject_button = driver.find_element(By.XPATH, selector)
-            if reject_button.is_displayed():
-                driver.execute_script("arguments[0].click();", reject_button)
-                print("Rejected cookies successfully")
-                time.sleep(2)
-                return True
-        except:
-            continue
-    
-    print("No cookie popup found - continuing...")
-    return False
-
-
-def perform_slow_scroll(driver, max_scrolls=4, scroll_increment=500, scroll_pause_time=2.5):
-    """
-    Perform slow, smooth scrolling to view content on a webpage.
-    
-    Args:
-        driver: Selenium webdriver instance
-        max_scrolls (int): Maximum number of scrolls to perform
-        scroll_increment (int): Pixels to scroll each time
-        scroll_pause_time (float): Seconds to pause between scrolls
-    """
-    print(f"Starting slow scroll through content...")
-    
-    for scroll_count in range(max_scrolls):
-        print(f"Scroll {scroll_count + 1}/{max_scrolls}")
-        
-        current_scroll = driver.execute_script("return window.pageYOffset;")
-        
-        driver.execute_script(f"""
-            window.scrollTo({{
-                top: {current_scroll + scroll_increment},
-                behavior: 'smooth'
-            }});
-        """)
-        
-        time.sleep(scroll_pause_time)
-        
-        # Try to load more content if available (for images)
-        try:
-            load_more_elements = driver.find_elements(By.CSS_SELECTOR, 
-                "input[value='Show more results'], [jsaction*='more'], .mye4qd")
-            if load_more_elements:
-                for element in load_more_elements:
-                    if element.is_displayed():
-                        driver.execute_script("arguments[0].click();", element)
-                        print("Loading more content...")
-                        time.sleep(2)
-                        break
-        except:
-            pass
-    
-    print(f"Scrolling completed after {max_scrolls} scrolls.")
-
-
-def search_attraction_images(attraction_name: str) -> str:
-    """
-    Search for an attraction on Google Images and slowly scroll through results.
-    This tool helps users visualize destinations and landmarks they're considering.
-    
-    Args:
-        attraction_name (str): Name of the attraction or destination to search for
+        attractions (list): List of attraction names to search for
+        country (str): Country name to add context to searches (optional)
     
     Returns:
-        str: Status message about the image search operation
+        str: Formatted message with clickable URLs for image searches
     """
-    driver = None
     try:
-        print(f"Searching for images of: {attraction_name}")
-        driver = setup_chrome_driver()
+        print(f"Generating image search URLs for {len(attractions)} attractions in {country}")
         
-        # Navigate to Google Images
-        driver.get("https://images.google.com")
-        time.sleep(2)
+        if not attractions:
+            return "No attractions provided for image search."
         
-        # Handle cookie consent
-        handle_cookie_consent(driver)
+        # Build the response message
+        country_text = f" in {country}" if country else ""
+        response_message = f"""Here are Google Images links to help you visualize these amazing attractions{country_text}:
+
+"""
         
-        # Find search box and enter query
-        print("Entering search query...")
-        search_box = driver.find_element(By.NAME, "q")
-        search_box.clear()
-        search_box.send_keys(attraction_name)
-        search_box.send_keys(Keys.RETURN)
+        for i, attraction in enumerate(attractions, 1):
+            # Create search query - include country for better context if provided
+            search_query = f"{attraction} {country}".strip() if country else attraction
+            
+            # URL encode the search query
+            import urllib.parse
+            encoded_query = urllib.parse.quote(search_query)
+            
+            # Generate Google Images URL
+            google_images_url = f"https://www.google.com/search?q={encoded_query}&tbm=isch"
+            
+            # Add to response message with emoji
+            emoji = "🏛️" if any(word in attraction.lower() for word in ["temple", "church", "cathedral", "mosque"]) else \
+                   "🏰" if any(word in attraction.lower() for word in ["castle", "palace", "fort"]) else \
+                   "🗼" if any(word in attraction.lower() for word in ["tower", "bridge", "statue"]) else \
+                   "🏞️" if any(word in attraction.lower() for word in ["park", "garden", "lake", "mountain", "beach"]) else \
+                   "🏛️" if any(word in attraction.lower() for word in ["museum", "gallery"]) else \
+                   "📍"
+            
+            response_message += f"{emoji} **{attraction}**:\n{google_images_url}\n\n"
         
-        # Wait for results to load
-        print("Waiting for search results...")
-        time.sleep(4)
+        response_message += """Click on any link to view stunning photos and get inspired for your trip! Each search will show you:
+- Professional travel photography
+- Different angles and perspectives  
+- Seasonal variations
+- Tourist experiences and activities
+- Nearby attractions and views"""
         
-        # Perform slow scroll through images
-        perform_slow_scroll(driver)
-        
-        print("Waiting for 2 seconds before closing...")
-        time.sleep(2)
-        
-        return f"Successfully displayed images of {attraction_name}. The browser showed various photos and views of this destination to help you visualize what it looks like."
+        return response_message
         
     except Exception as e:
-        error_msg = f"An error occurred while searching for images of {attraction_name}: {str(e)}"
+        error_msg = f"An error occurred while generating image search URLs: {str(e)}"
         print(error_msg)
         return error_msg
-    
-    finally:
-        if driver:
-            try:
-                driver.quit()
-                print("Browser closed successfully.")
-            except:
-                print("Browser was already closed.")
 
 
 def view_flights(from_location: str = "LHR", to_location: str = "HKG", 
@@ -184,14 +80,33 @@ def view_flights(from_location: str = "LHR", to_location: str = "HKG",
     Returns:
         str: Formatted message with clickable URLs for flight searches
     """
-    # Set default dates if not provided
+    # Get current year for defaults
+    current_year = datetime.now().year
+    
+    # Set default dates if not provided, ensure current year is used
     if not depart_date:
-        depart_datetime = datetime.now() + timedelta(days=1)
+        depart_datetime = datetime(current_year, datetime.now().month, datetime.now().day) + timedelta(days=1)
         depart_date = depart_datetime.strftime("%Y-%m-%d")
+    else:
+        # If date provided but year seems old, update to current year
+        depart_parsed = datetime.strptime(depart_date, "%Y-%m-%d")
+        if depart_parsed.year < current_year:
+            depart_parsed = depart_parsed.replace(year=current_year)
+            depart_date = depart_parsed.strftime("%Y-%m-%d")
     
     if not return_date:
         return_datetime = datetime.strptime(depart_date, "%Y-%m-%d") + timedelta(days=4)
         return_date = return_datetime.strftime("%Y-%m-%d")
+    else:
+        # If date provided but year seems old, update to current year
+        return_parsed = datetime.strptime(return_date, "%Y-%m-%d")
+        depart_parsed = datetime.strptime(depart_date, "%Y-%m-%d")
+        if return_parsed.year < current_year:
+            return_parsed = return_parsed.replace(year=current_year)
+        # If return date is before departure date, assume next year
+        if return_parsed < depart_parsed:
+            return_parsed = return_parsed.replace(year=return_parsed.year + 1)
+        return_date = return_parsed.strftime("%Y-%m-%d")
     
     try:
         print(f"Generating flight search URLs from {from_location} to {to_location}")
@@ -225,58 +140,63 @@ Click on any of these links to view current flight options, prices, and availabi
 
 
 def find_airbnb_accommodation(destination: str, checkin: str = None, checkout: str = None, guests: int = 2) -> str:
-    """
-    Generate Airbnb search URL for accommodation in a specific destination.
-    This tool provides direct links to Airbnb for finding unique stays and local experiences.
+    """Generate Airbnb search URL for accommodation in a destination."""
+    # Get current year for defaults
+    current_year = datetime.now().year
     
-    Args:
-        destination (str): Destination city or area (e.g., "Paris", "Tokyo", "Barcelona")
-        checkin (str): Check-in date in YYYY-MM-DD format (defaults to tomorrow)
-        checkout (str): Check-out date in YYYY-MM-DD format (defaults to 5 days after check-in)
-        guests (int): Number of guests (defaults to 2)
-    
-    Returns:
-        str: Formatted message with clickable Airbnb search URL
-    """
-    # Set default dates if not provided
+    # Set default dates if not provided, ensure current year is used
     if not checkin:
-        checkin_datetime = datetime.now() + timedelta(days=1)
+        checkin_datetime = datetime(current_year, datetime.now().month, datetime.now().day) + timedelta(days=1)
         checkin = checkin_datetime.strftime("%Y-%m-%d")
+    else:
+        # If date provided but year seems old, update to current year
+        checkin_parsed = datetime.strptime(checkin, "%Y-%m-%d")
+        if checkin_parsed.year < current_year:
+            checkin_parsed = checkin_parsed.replace(year=current_year)
+            checkin = checkin_parsed.strftime("%Y-%m-%d")
     
     if not checkout:
         checkout_datetime = datetime.strptime(checkin, "%Y-%m-%d") + timedelta(days=4)
         checkout = checkout_datetime.strftime("%Y-%m-%d")
+    else:
+        # If date provided but year seems old, update to current year
+        checkout_parsed = datetime.strptime(checkout, "%Y-%m-%d")
+        checkin_parsed = datetime.strptime(checkin, "%Y-%m-%d")
+        if checkout_parsed.year < current_year:
+            checkout_parsed = checkout_parsed.replace(year=current_year)
+        # If checkout date is before checkin date, assume next year
+        if checkout_parsed < checkin_parsed:
+            checkout_parsed = checkout_parsed.replace(year=checkout_parsed.year + 1)
+        checkout = checkout_parsed.strftime("%Y-%m-%d")
     
     try:
         print(f"Generating Airbnb search URL for {destination}")
         print(f"Check-in: {checkin}, Check-out: {checkout}, Guests: {guests}")
         
-        # URL encode the destination to handle spaces and special characters
-        encoded_destination = urllib.parse.quote(destination)
+        # Format destination for Airbnb URLs (replace commas with --)
+        formatted_destination = destination.replace(",", "--").replace(" ", "-")
         
         # Generate Airbnb search URL
-        airbnb_url = f"https://www.airbnb.co.uk/s/{encoded_destination}/homes?checkin={checkin}&checkout={checkout}&adults={guests}"
+        airbnb_url = f"https://www.airbnb.co.uk/s/{formatted_destination}/homes?checkin={checkin}&checkout={checkout}&adults={guests}"
         
-        # Format the response message
         response_message = f"""Here's your Airbnb search link for {destination} ({checkin} to {checkout}) for {guests} guest(s):
 
 🏠 **Airbnb** (Unique stays and local experiences):
 {airbnb_url}
 
-Click the link above to browse available accommodations including:
-- Entire homes and apartments for privacy and space
-- Private rooms in local homes for cultural immersion  
-- Unique properties like castles, treehouses, and boats
-- Local experiences and activities hosted by residents
-
-Airbnb is perfect for longer stays, group travel, or when you want to live like a local in your destination!"""
+Click the link to browse:
+- Entire homes and apartments
+- Private rooms in local homes
+- Unique properties and experiences
+- Local neighborhood stays"""
         
         return response_message
         
     except Exception as e:
-        error_msg = f"An error occurred while generating Airbnb URL for {destination}: {str(e)}"
+        error_msg = f"Error generating Airbnb URL for {destination}: {str(e)}"
         print(error_msg)
         return error_msg
+
 
 
 def create_model_client():
@@ -347,10 +267,11 @@ async def main():
     from autogen_agentchat.agents import UserProxyAgent
     from autogen_agentchat.teams import RoundRobinGroupChat
     from autogen_agentchat.ui import Console
+    from autogen_agentchat.conditions import TextMentionTermination
     
     print("🌍✈️🏠 Welcome to your Complete Travel Planning Advisor!")
     print("I can help you choose amazing destinations, show you images, provide flight links, and find accommodation!")
-    print("Starting interactive session... (type 'TERMINATE' to quit)\n")
+    print("Starting interactive session... (type 'EXIT' to quit)\n")
     
     # Create a user proxy agent to handle human input
     user_proxy = UserProxyAgent(
@@ -359,22 +280,12 @@ async def main():
     )
     
     # Create a team with both the travel agent and user proxy
-    team = RoundRobinGroupChat([user_proxy, travel_destination_agent])
+    team = RoundRobinGroupChat(participants=[user_proxy, travel_destination_agent],
+                               termination_condition=TextMentionTermination("EXIT"))  # Limit to 100 turns to prevent infinite loops)
     
     # Use Console with the team for proper conversation flow
     await Console(team.run_stream())
 
 
 if __name__ == "__main__":
-    # You can test individual functions:
-    # result = search_attraction_images("Eiffel Tower")
-    # print(result)
-    # 
-    # result = view_flights("LHR", "HKG", "2025-07-01", "2025-07-10")
-    # print(result)
-    #
-    # result = find_airbnb_accommodation("Paris", "2025-07-01", "2025-07-08", 4)
-    # print(result)
-    
-    # Run the main agent interaction
     asyncio.run(main())
