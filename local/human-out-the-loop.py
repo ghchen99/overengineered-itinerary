@@ -2,12 +2,11 @@ import os
 import asyncio
 import re
 from dataclasses import dataclass
-from typing import Optional, List
-from datetime import datetime, timedelta
+from typing import Optional
+from datetime import datetime
 from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.teams import RoundRobinGroupChat
 from autogen_agentchat.conditions import MaxMessageTermination, TextMentionTermination
-from autogen_agentchat.ui import Console
 from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
 
 @dataclass
@@ -68,95 +67,6 @@ I need help with flights, accommodation, and a detailed itinerary. My budget is 
         prompt += f"\n\nAdditional preferences: {request.additional_preferences}"
     
     return prompt
-
-def view_flights(from_location: str = "LHR", to_location: str = "HKG", 
-                depart_date: str = None, return_date: str = None) -> str:
-    """Generate flight search URLs for easy access to booking sites."""
-    # Set default dates if not provided
-    if not depart_date:
-        depart_datetime = datetime.now() + timedelta(days=1)
-        depart_date = depart_datetime.strftime("%Y-%m-%d")
-    
-    if not return_date:
-        return_datetime = datetime.strptime(depart_date, "%Y-%m-%d") + timedelta(days=4)
-        return_date = return_datetime.strftime("%Y-%m-%d")
-    
-    try:
-        print(f"Generating flight search URLs from {from_location} to {to_location}")
-        print(f"Departure: {depart_date}, Return: {return_date}")
-        
-        # Convert dates to YYMMDD format for Skyscanner
-        depart_date_formatted = datetime.strptime(depart_date, "%Y-%m-%d").strftime("%y%m%d")
-        return_date_formatted = datetime.strptime(return_date, "%Y-%m-%d").strftime("%y%m%d")
-        
-        # Generate URLs for flight booking sites
-        kayak_url = f"https://www.kayak.co.uk/flights/{from_location}-{to_location}/{depart_date}/{return_date}?sort=bestflight_a"
-        skyscanner_url = f"https://www.skyscanner.net/transport/flights/{from_location.lower()}/{to_location.lower()}/{depart_date_formatted}/{return_date_formatted}/"
-
-        response_message = f"""## ✈️ Flight Information
-
-**Route:** {from_location} → {to_location}  
-**Dates:** {depart_date} to {return_date}
-
-### Booking Links:
-- 🔗 **[Kayak - Compare Prices]({kayak_url})**
-- 🔗 **[Skyscanner - Flexible Dates]({skyscanner_url})**"""
-        
-        return response_message
-        
-    except Exception as e:
-        error_msg = f"Error generating flight URLs from {from_location} to {to_location}: {str(e)}"
-        print(error_msg)
-        return error_msg
-
-def find_airbnb_accommodation(destination: str, checkin: str = None, checkout: str = None, guests: int = 2) -> str:
-    """Generate Airbnb search URL for accommodation in a destination."""
-    # Set default dates if not provided
-    if not checkin:
-        checkin_datetime = datetime.now() + timedelta(days=1)
-        checkin = checkin_datetime.strftime("%Y-%m-%d")
-    
-    if not checkout:
-        checkout_datetime = datetime.strptime(checkin, "%Y-%m-%d") + timedelta(days=4)
-        checkout = checkout_datetime.strftime("%Y-%m-%d")
-    
-    try:
-        print(f"Generating Airbnb search URL for {destination}")
-        print(f"Check-in: {checkin}, Check-out: {checkout}, Guests: {guests}")
-        
-        # Format destination for Airbnb URLs (replace commas with --)
-        formatted_destination = destination.replace(",", "--").replace(" ", "-")
-        
-        # Generate Airbnb search URL
-        airbnb_url = f"https://www.airbnb.co.uk/s/{formatted_destination}/homes?checkin={checkin}&checkout={checkout}&adults={guests}"
-        
-        response_message = f"""
-### {destination}
-- 🔗 **[Browse Airbnb Properties]({airbnb_url})**"""
-        
-        return response_message
-        
-    except Exception as e:
-        error_msg = f"Error generating Airbnb URL for {destination}: {str(e)}"
-        print(error_msg)
-        return error_msg
-
-def add_image_links(location_name: str) -> str:
-    """Generate Google Images search URL for a location."""
-    try:
-        # Clean the location name for URL encoding
-        clean_name = location_name.strip()
-        # URL encode the location name
-        encoded_name = clean_name.replace(" ", "+").replace(",", "%2C")
-        
-        # Generate Google Images search URL
-        image_url = f"https://www.google.com/search?q={encoded_name}&tbm=isch"
-        
-        return image_url
-        
-    except Exception as e:
-        print(f"Error generating image URL for {location_name}: {str(e)}")
-        return ""
 
 def create_model_client():
     """Create and return the Azure OpenAI model client."""
@@ -230,7 +140,7 @@ After creating the document, end with: "ITINERARY_COMPLETE - Ready for ImagesAge
         model_client=model_client,
     )
     
-    # Images Agent - Adds Google image search links to notable locations in the itinerary
+    # Images Agent - Now embeds image link generation logic in system prompt
     images_agent = AssistantAgent(
         name="ImagesAgent",
         description="Adds Google image search links to notable locations in the Day-by-Day Itinerary section.",
@@ -239,9 +149,18 @@ After creating the document, end with: "ITINERARY_COMPLETE - Ready for ImagesAge
 Your job is to:
 1. Take the ENTIRE existing travel document
 2. Identify notable locations, attractions, temples, landmarks, restaurants, and places mentioned in the "## 📅 Day-by-Day Itinerary" section ONLY
-3. Use the add_image_links tool to get Google Images URLs for these locations
-4. Replace location names with markdown links that include the Google Images search
+3. Generate Google Images search URLs for these locations using this format:
+   - Clean the location name (remove special characters, replace spaces with +)
+   - Create URL: https://www.google.com/search?q=[LOCATION_NAME_ENCODED]&tbm=isch
+   - Example: "Tokyo Tower" becomes "https://www.google.com/search?q=Tokyo+Tower&tbm=isch"
+4. Replace location names with markdown links: [Location Name](Google Images URL)
 5. Return the COMPLETE updated document with enhanced itinerary links
+
+GOOGLE IMAGES URL GENERATION RULES:
+- Replace spaces with + signs
+- Replace commas with %2C
+- Keep alphanumeric characters and common punctuation
+- Format: https://www.google.com/search?q=[encoded_location]&tbm=isch
 
 CRITICAL RULES:
 - ONLY modify the "## 📅 Day-by-Day Itinerary" section
@@ -250,12 +169,16 @@ CRITICAL RULES:
 - Only add links to specific places, attractions, landmarks, temples, restaurants, etc.
 - Don't add links to generic words like "train", "hotel", "lunch"
 
+EXAMPLES:
+- "Senso-ji Temple" → [Senso-ji Temple](https://www.google.com/search?q=Senso-ji+Temple&tbm=isch)
+- "Tsukiji Outer Market" → [Tsukiji Outer Market](https://www.google.com/search?q=Tsukiji+Outer+Market&tbm=isch)
+- "Tokyo, Japan" → [Tokyo, Japan](https://www.google.com/search?q=Tokyo%2C+Japan&tbm=isch)
+
 After updating, end with: "IMAGES_COMPLETE - Ready for FlightsAgent".""",
         model_client=model_client,
-        tools=[add_image_links],
     )
     
-    # Enhanced Flights Agent - lets agents infer airports if not provided
+    # Enhanced Flights Agent - Now embeds flight URL generation logic
     flights_agent = AssistantAgent(
         name="FlightsAgent", 
         description="Adds flight booking information using user's travel details.",
@@ -267,13 +190,6 @@ USER'S FLIGHT DETAILS:
 - Depart Date: {travel_request.depart_date}
 - Return Date: {travel_request.return_date}
 
-Your job is to:
-1. Take the ENTIRE existing travel document 
-2. If airports are not specified, infer appropriate airport codes based on the destination
-3. Use the view_flights tool with the appropriate airport details
-4. Replace "<!-- FLIGHTS_PLACEHOLDER -->" with the actual flight section
-5. Return the COMPLETE updated document with all original content intact
-
 AIRPORT INFERENCE GUIDE:
 - For major cities, use the main international airport
 - Tokyo: NRT (Narita) or HND (Haneda)
@@ -282,12 +198,46 @@ AIRPORT INFERENCE GUIDE:
 - New York: JFK or LGA
 - Use common sense for other destinations
 
+FLIGHT URL GENERATION:
+Once you determine the appropriate airports, generate these booking URLs:
+
+1. KAYAK URL FORMAT:
+   https://www.kayak.co.uk/flights/[FROM]-[TO]/[YYYY-MM-DD]/[YYYY-MM-DD]?sort=bestflight_a
+
+2. SKYSCANNER URL FORMAT:
+   https://www.skyscanner.net/transport/flights/[from_lower]/[to_lower]/[YYMMDD]/[YYMMDD]/
+   (Note: Skyscanner uses YYMMDD format and lowercase airport codes)
+
+EXAMPLE:
+- From: LHR, To: NRT
+- Dates: 2025-10-10 to 2025-10-17
+- Kayak: https://www.kayak.co.uk/flights/LHR-NRT/2025-10-10/2025-10-17?sort=bestflight_a
+- Skyscanner: https://www.skyscanner.net/transport/flights/lhr/nrt/251010/251017/
+
+Your job is to:
+1. Take the ENTIRE existing travel document 
+2. If airports are not specified, infer appropriate airport codes
+3. Generate the flight booking URLs using the formats above
+4. Replace "<!-- FLIGHTS_PLACEHOLDER -->" with this flight section:
+
+```markdown
+## ✈️ Flight Information
+
+**Route:** [FROM] → [TO]  
+**Dates:** [DEPART_DATE] to [RETURN_DATE]
+
+### Booking Links:
+- 🔗 **[Kayak - Compare Prices]([KAYAK_URL])**
+- 🔗 **[Skyscanner - Flexible Dates]([SKYSCANNER_URL])**
+```
+
+5. Return the COMPLETE updated document with all original content intact
+
 After updating, end with: "FLIGHTS_COMPLETE - Ready for AccommodationAgent".""",
         model_client=model_client,
-        tools=[view_flights],
     )
     
-    # Enhanced Accommodation Agent with user's specific details  
+    # Enhanced Accommodation Agent - Now embeds Airbnb URL generation logic
     accommodation_agent = AssistantAgent(
         name="AccommodationAgent",
         description="Adds accommodation information using user's travel details.",
@@ -298,20 +248,56 @@ USER'S ACCOMMODATION DETAILS:
 - Check-in: {travel_request.depart_date}
 - Check-out: {travel_request.return_date}
 
+AIRBNB URL GENERATION:
+For each recommended base location in the travel document, generate Airbnb search URLs using this format:
+
+https://www.airbnb.co.uk/s/[FORMATTED_DESTINATION]/homes?checkin=[YYYY-MM-DD]&checkout=[YYYY-MM-DD]&adults=2
+
+DESTINATION FORMATTING RULES:
+- Replace commas with "--"
+- Replace spaces with "-"
+- Keep the location name descriptive
+
+EXAMPLES:
+- "Tokyo, Japan" → "Tokyo--Japan"
+- "Shibuya District" → "Shibuya-District"
+- "New York City" → "New-York-City"
+
 Your job is to:
 1. Take the ENTIRE existing travel document
-2. Use the find_airbnb_accommodation tool for each recommended base location
-3. Replace "<!-- ACCOMMODATION_PLACEHOLDER -->" with a complete accommodation section
-4. Return the COMPLETE final travel document with all content intact
+2. Identify each recommended base location from the "🗺️ Recommended Base Locations" section
+3. Generate Airbnb URLs for each location using the format above
+4. Replace "<!-- ACCOMMODATION_PLACEHOLDER -->" with a complete accommodation section:
 
-Use these parameters for the find_airbnb_accommodation tool:
+```markdown
+## 🏠 Accommodation Options
+
+### Recommended Areas:
+
+#### [Location 1 Name]
+- 🔗 **[Browse Airbnb Properties]([AIRBNB_URL_1])**
+
+#### [Location 2 Name]  
+- 🔗 **[Browse Airbnb Properties]([AIRBNB_URL_2])**
+
+[Continue for each base location...]
+
+### Booking Tips:
+- Book early for better rates and availability
+- Consider proximity to public transportation
+- Read recent reviews for the most accurate information
+- Look for properties with flexible cancellation policies
+```
+
+5. Return the COMPLETE final travel document with all content intact
+
+Use these parameters for URL generation:
 - checkin: {travel_request.depart_date}
 - checkout: {travel_request.return_date}
-- guests: 2 (default - can be adjusted based on context)
+- guests: 2 (default)
 
 After completing, end with: "ACCOMMODATION_COMPLETE - Ready for CriticAgent".""",
         model_client=model_client,
-        tools=[find_airbnb_accommodation],
     )
     
     # Critic Agent - Reviews and outputs final document
@@ -323,16 +309,28 @@ After completing, end with: "ACCOMMODATION_COMPLETE - Ready for CriticAgent"."""
 Your job is to:
 1. Review the complete travel document for quality and completeness
 2. Ensure no placeholders remain (no "<!-- PLACEHOLDER -->" text)
-3. Verify all sections are properly filled
-4. Verify that notable locations in the itinerary have Google Images links
-5. Output "DOCUMENT_READY" followed by the final, clean markdown document
+3. Verify all sections are properly filled out:
+   - Day-by-day itinerary with Google Images links for notable locations
+   - Flight information with working booking URLs
+   - Accommodation section with Airbnb search links
+4. Check that the document follows proper markdown formatting
+5. Ensure the content is coherent and well-organized
+6. Output "DOCUMENT_READY" followed by the final, clean markdown document
+
+QUALITY CHECKLIST:
+✅ No placeholder text remains
+✅ All notable locations in itinerary have Google Images links
+✅ Flight section has proper booking URLs
+✅ Accommodation section has Airbnb search links for each base location
+✅ Proper markdown formatting throughout
+✅ Content is tailored to user's preferences and budget level
 
 If the document is complete and properly formatted, respond with:
 DOCUMENT_READY
 
 [Insert the complete final markdown document here]
 
-If anything is missing or incorrect, provide specific feedback on what needs to be fixed.""",
+If anything is missing or incorrect, provide specific feedback on what needs to be fixed and ask the previous agent to make corrections.""",
         model_client=model_client,
     )
     
