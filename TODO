@@ -1,3 +1,4 @@
 # TODO
 
-- [ ] Refine the efficiency of the document produced by the supervisor!
+- [ ] Refactor backend code into FastAPI
+- [ ] Create frontend mock
