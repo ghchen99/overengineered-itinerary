@@ -1,8 +1,0 @@
-autogen-agentchat>=0.4.0
-autogen-core>=0.4.0 
-autogen-ext[openai]>=0.4.0
-autogen-ext[web-surfer]>=0.4.0
-asyncio
-pandas 
-fastapi
-uvicorn

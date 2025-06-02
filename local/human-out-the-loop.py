@@ -356,12 +356,22 @@ def save_markdown_document(content: str, travel_request: TravelRequest, filename
         safe_city = re.sub(r'[^\w\-_]', '_', travel_request.destination_city.lower())
         filename = f"travel_plan_{safe_city}_{timestamp}.md"
     
-    # Extract the markdown content after "DOCUMENT_READY"
-    if "DOCUMENT_READY" in content:
-        markdown_content = content.split("DOCUMENT_READY", 1)[1].strip()
-    else:
-        markdown_content = content
+    # Remove "DOCUMENT_READY" marker if present
+    markdown_content = content.replace("DOCUMENT_READY", "").strip()
     
+    # Remove markdown code block markers if present
+    # Handle both ```markdown and ``` cases
+    if markdown_content.startswith('```markdown'):
+        # Remove opening ```markdown and closing ```
+        markdown_content = markdown_content[11:].strip()  # Remove '```markdown'
+        if markdown_content.endswith('```'):
+            markdown_content = markdown_content[:-3].strip()  # Remove closing '```'
+    elif markdown_content.startswith('```'):
+        # Handle case where it's just ``` without 'markdown'
+        markdown_content = markdown_content[3:].strip()  # Remove opening '```'
+        if markdown_content.endswith('```'):
+            markdown_content = markdown_content[:-3].strip()  # Remove closing '```'
+            
     try:
         with open(filename, 'w', encoding='utf-8') as f:
             f.write(markdown_content)
