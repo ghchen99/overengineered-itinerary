@@ -1,8 +1,9 @@
 import os
 import asyncio
 import re
+import difflib
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, List, Tuple
 from datetime import datetime
 from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.teams import RoundRobinGroupChat
@@ -27,6 +28,188 @@ class TravelRequest:
         # Normalize priority
         self.priority = self.priority.lower().strip()
         self.budget_level = self.budget_level.lower().strip()
+
+class DocumentTracker:
+    """Tracks document evolution and generates visual diffs."""
+    
+    def __init__(self, travel_request: TravelRequest):
+        self.travel_request = travel_request
+        self.versions = []  # List of (agent_name, content, timestamp)
+        self.output_dir = self._create_output_directory()
+    
+    def _create_output_directory(self) -> str:
+        """Create a timestamped output directory for this planning session."""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_city = re.sub(r'[^\w\-_]', '_', self.travel_request.destination_city.lower())
+        dir_name = f"travel_plan_{safe_city}_{timestamp}"
+        
+        if not os.path.exists(dir_name):
+            os.makedirs(dir_name)
+        
+        return dir_name
+    
+    def extract_markdown_content(self, raw_content: str) -> str:
+        """Extract clean markdown content from agent response."""
+        content = raw_content.strip()
+        
+        # Remove agent completion markers
+        markers_to_remove = [
+            "ITINERARY_COMPLETE - Ready for ImagesAgent",
+            "IMAGES_COMPLETE - Ready for FlightsAgent", 
+            "FLIGHTS_COMPLETE - Ready for AccommodationAgent",
+            "ACCOMMODATION_COMPLETE - Ready for CriticAgent",
+            "DOCUMENT_READY"
+        ]
+        
+        for marker in markers_to_remove:
+            content = content.replace(marker, "").strip()
+        
+        # Remove markdown code block markers if present
+        if content.startswith('```markdown'):
+            content = content[11:].strip()
+            if content.endswith('```'):
+                content = content[:-3].strip()
+        elif content.startswith('```'):
+            content = content[3:].strip()
+            if content.endswith('```'):
+                content = content[:-3].strip()
+        
+        return content
+    
+    def add_version(self, agent_name: str, content: str) -> str:
+        """Add a new version and generate visualization files."""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        clean_content = self.extract_markdown_content(content)
+        
+        # Only add if content is substantial (not just status messages)
+        if len(clean_content) > 100 and clean_content.startswith('#'):
+            self.versions.append((agent_name, clean_content, timestamp))
+            
+            # Generate files for this version
+            version_num = len(self.versions)
+            self._save_clean_version(version_num, agent_name, clean_content, timestamp)
+            
+            if version_num > 1:
+                self._save_diff_version(version_num, agent_name, timestamp)
+            
+            return f"Version {version_num} saved: {agent_name} at {timestamp}"
+        
+        return f"Skipped {agent_name} - insufficient content"
+    
+    def _save_clean_version(self, version_num: int, agent_name: str, content: str, timestamp: str):
+        """Save clean markdown version."""
+        filename = f"{version_num:02d}_{agent_name}_{timestamp.replace(':', '-')}_clean.md"
+        filepath = os.path.join(self.output_dir, filename)
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(content)
+    
+    def _save_diff_version(self, version_num: int, agent_name: str, timestamp: str):
+        """Save version with visual diff highlighting."""
+        if version_num < 2:
+            return
+            
+        prev_content = self.versions[-2][1]  # Previous version content
+        curr_content = self.versions[-1][1]  # Current version content
+        
+        diff_content = self._generate_visual_diff(prev_content, curr_content)
+        
+        filename = f"{version_num:02d}_{agent_name}_{timestamp.replace(':', '-')}_diff.md"
+        filepath = os.path.join(self.output_dir, filename)
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(diff_content)
+    
+    def _generate_visual_diff(self, old_content: str, new_content: str) -> str:
+        """Generate markdown with visual diff highlighting using HTML."""
+        old_lines = old_content.splitlines(keepends=True)
+        new_lines = new_content.splitlines(keepends=True)
+        
+        diff = list(difflib.unified_diff(old_lines, new_lines, lineterm=''))
+        
+        if not diff:
+            return new_content  # No changes
+        
+        # Create a more sophisticated diff visualization
+        result_lines = []
+        
+        # Add CSS styling at the top
+        result_lines.append("""<style>
+.added { color: #22c55e; font-weight: bold; background-color: #dcfce7; padding: 2px 4px; border-radius: 3px; }
+.removed { color: #ef4444; text-decoration: line-through; background-color: #fee2e2; padding: 2px 4px; border-radius: 3px; }
+.unchanged { color: #6b7280; }
+.section-divider { border-top: 2px solid #e5e7eb; margin: 20px 0; padding-top: 10px; }
+</style>
+
+""")
+        
+        # Use SequenceMatcher for better word-level diffs
+        matcher = difflib.SequenceMatcher(None, old_content, new_content)
+        
+        last_pos = 0
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == 'equal':
+                # Unchanged text - make it slightly grey
+                unchanged_text = new_content[j1:j2]
+                if unchanged_text.strip():  # Only wrap non-empty content
+                    result_lines.append(f'<span class="unchanged">{self._escape_html(unchanged_text)}</span>')
+            elif tag == 'insert':
+                # New text - highlight in green
+                new_text = new_content[j1:j2]
+                if new_text.strip():
+                    result_lines.append(f'<span class="added">{self._escape_html(new_text)}</span>')
+            elif tag == 'delete':
+                # Deleted text - show as struck through in red
+                old_text = old_content[i1:i2]
+                if old_text.strip():
+                    result_lines.append(f'<span class="removed">{self._escape_html(old_text)}</span>')
+            elif tag == 'replace':
+                # Show both old (struck through) and new (highlighted)
+                old_text = old_content[i1:i2]
+                new_text = new_content[j1:j2]
+                if old_text.strip():
+                    result_lines.append(f'<span class="removed">{self._escape_html(old_text)}</span>')
+                if new_text.strip():
+                    result_lines.append(f'<span class="added">{self._escape_html(new_text)}</span>')
+        
+        return ''.join(result_lines)
+    
+    def _escape_html(self, text: str) -> str:
+        """Escape HTML characters while preserving markdown formatting."""
+        # Only escape essential HTML characters, preserve markdown
+        return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+    
+    def generate_summary(self):
+        """Generate a summary file of all versions."""
+        summary_content = [f"# Travel Plan Evolution Summary\n"]
+        summary_content.append(f"**Destination:** {self.travel_request.destination_city}, {self.travel_request.destination_country}\n")
+        summary_content.append(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+        
+        summary_content.append("## Version History\n")
+        for i, (agent_name, _, timestamp) in enumerate(self.versions, 1):
+            summary_content.append(f"{i}. **{agent_name}** - {timestamp}\n")
+        
+        summary_content.append(f"\n## Files Generated\n")
+        summary_content.append(f"- **Clean versions:** Show the complete document at each stage\n")
+        summary_content.append(f"- **Diff versions:** Show changes highlighted in colors\n")
+        summary_content.append(f"- **Green text:** New additions\n")
+        summary_content.append(f"- **Grey text:** Unchanged content\n")
+        summary_content.append(f"- **Red strikethrough:** Removed content\n\n")
+        
+        summary_content.append("## Viewing Instructions\n")
+        summary_content.append("1. Open the `_clean.md` files to see the complete document at each stage\n")
+        summary_content.append("2. Open the `_diff.md` files in a markdown viewer that supports HTML to see the changes\n")
+        summary_content.append("3. The final version is the highest numbered clean file\n")
+        
+        summary_path = os.path.join(self.output_dir, "00_SUMMARY.md")
+        with open(summary_path, 'w', encoding='utf-8') as f:
+            f.write(''.join(summary_content))
+    
+    def get_final_document(self) -> str:
+        """Get the final complete document."""
+        if self.versions:
+            return self.versions[-1][1]
+        return ""
 
 def generate_travel_prompt(request: TravelRequest) -> str:
     """Generate a natural travel request prompt from structured input."""
@@ -78,7 +261,7 @@ def create_model_client():
         api_key=os.environ["AZURE_OPENAI_API_KEY"],
     )
 
-def create_sequential_travel_team(model_client, travel_request: TravelRequest):
+def create_sequential_travel_team(model_client, travel_request: TravelRequest, document_tracker: DocumentTracker):
     """Create a sequential team that builds a single cohesive markdown document."""
     
     # Enhanced Itinerary Agent with user preferences
@@ -347,49 +530,16 @@ If anything is missing or incorrect, provide specific feedback on what needs to 
     
     return team
 
-def save_markdown_document(content: str, travel_request: TravelRequest, filename: str = None):
-    """Save the final markdown document to a file."""
-    if not filename:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        safe_city = re.sub(r'[^\w\-_]', '_', travel_request.destination_city.lower())
-        filename = f"travel_plan_{safe_city}_{timestamp}.md"
-    
-    # Remove "DOCUMENT_READY" marker if present
-    markdown_content = content.replace("DOCUMENT_READY", "").strip()
-    
-    # Remove markdown code block markers if present
-    # Handle both ```markdown and ``` cases
-    if markdown_content.startswith('```markdown'):
-        # Remove opening ```markdown and closing ```
-        markdown_content = markdown_content[11:].strip()  # Remove '```markdown'
-        if markdown_content.endswith('```'):
-            markdown_content = markdown_content[:-3].strip()  # Remove closing '```'
-    elif markdown_content.startswith('```'):
-        # Handle case where it's just ``` without 'markdown'
-        markdown_content = markdown_content[3:].strip()  # Remove opening '```'
-        if markdown_content.endswith('```'):
-            markdown_content = markdown_content[:-3].strip()  # Remove closing '```'
-            
-    try:
-        with open(filename, 'w', encoding='utf-8') as f:
-            f.write(markdown_content)
-        print(f"\n✅ Travel plan saved to: {filename}")
-        return filename
-    except Exception as e:
-        print(f"❌ Error saving file: {e}")
-        return None
-
-async def run_sequential_travel_planner(travel_request: TravelRequest, save_locally: bool = True) -> str:
-    """Run the sequential travel planner with user input and optionally save the final markdown document.
+async def run_sequential_travel_planner(travel_request: TravelRequest) -> Tuple[str, str]:
+    """Run the sequential travel planner with visual progress tracking.
     
     Args:
         travel_request: The travel request configuration
-        save_locally: Whether to save the markdown document to a local file (default: True)
         
     Returns:
-        str: The generated markdown travel plan document
+        Tuple[str, str]: (final_markdown_document, output_directory_path)
     """
-    print(f"\n{'='*80}\nRunning Sequential Travel Planner\n{'='*80}\n")
+    print(f"\n{'='*80}\nRunning Sequential Travel Planner with Visual Progress\n{'='*80}\n")
     print(f"Destination: {travel_request.destination_city}, {travel_request.destination_country}")
     print(f"Dates: {travel_request.depart_date} to {travel_request.return_date}")
     print(f"Priority: {travel_request.priority}")
@@ -400,6 +550,10 @@ async def run_sequential_travel_planner(travel_request: TravelRequest, save_loca
         print(f"Destination Airport: {travel_request.destination_airport}")
     print()
     
+    # Initialize document tracker
+    document_tracker = DocumentTracker(travel_request)
+    print(f"📁 Output directory: {document_tracker.output_dir}")
+    
     # Generate the travel prompt from user input
     travel_prompt = generate_travel_prompt(travel_request)
     print("Generated Travel Prompt:")
@@ -408,44 +562,58 @@ async def run_sequential_travel_planner(travel_request: TravelRequest, save_loca
     print("-" * 40 + "\n")
     
     model_client = create_model_client()
-    final_document = ""
     
     try:
         # Create the sequential team with user preferences
-        team = create_sequential_travel_team(model_client, travel_request)
+        team = create_sequential_travel_team(model_client, travel_request, document_tracker)
         
         # Run the team with the generated prompt
         stream = team.run_stream(task=travel_prompt)
         
-        # Capture the final document
+        # Process messages and track document evolution
         async for message in stream:
             print(f"---------- {type(message).__name__} ({getattr(message, 'source', 'system')}) ----------")
             if hasattr(message, 'content'):
                 print(message.content)
-                # Capture the final document when critic outputs it
-                if hasattr(message, 'source') and message.source == "CriticAgent" and "DOCUMENT_READY" in message.content:
-                    final_document = message.content
+                
+                # Track document evolution for agent responses
+                if hasattr(message, 'source') and message.source:
+                    agent_name = message.source
+                    track_result = document_tracker.add_version(agent_name, message.content)
+                    if "saved" in track_result.lower():
+                        print(f"📝 {track_result}")
     finally:
         # Close model client connections
         await model_client.close()
     
-    # Save the final document if we captured it and saving is requested
+    # Generate summary and get final document
+    document_tracker.generate_summary()
+    final_document = document_tracker.get_final_document()
+    
     if final_document:
-        if save_locally:
-            saved_file = save_markdown_document(final_document, travel_request)
-            if saved_file:
-                print(f"\n🎉 Complete travel plan generated and saved!")
-                print(f"📄 File: {saved_file}")
-        else:
-            print(f"\n🎉 Complete travel plan generated!")
+        print(f"\n🎉 Complete travel plan generated with visual progress tracking!")
+        print(f"📁 Output directory: {document_tracker.output_dir}")
+        print(f"📄 Files generated: {len(os.listdir(document_tracker.output_dir))}")
+        print(f"\n📋 Generated files:")
         
-        return final_document
+        files = sorted(os.listdir(document_tracker.output_dir))
+        for file in files:
+            if file.endswith('_clean.md'):
+                print(f"   📄 {file} - Complete document version")
+            elif file.endswith('_diff.md'):
+                print(f"   🎨 {file} - Visual changes highlighted")
+            elif file == "00_SUMMARY.md":
+                print(f"   📊 {file} - Process summary")
+        
+        print(f"\n💡 View the diff files in a markdown viewer that supports HTML to see highlighted changes!")
+        
+        return final_document, document_tracker.output_dir
     else:
         print("\n⚠️  Warning: Final document was not captured properly")
-        return ""
+        return "", document_tracker.output_dir
 
 async def main():
-    """Main function to run the travel planner."""
+    """Main function to run the travel planner with visual progress tracking."""
 
     travel_request = TravelRequest(
         destination_city="Tokyo",
@@ -458,15 +626,12 @@ async def main():
         additional_preferences="interested in temples and authentic experiences"
     )
     
-    # Example usage with local saving (default behavior)
-    markdown_plan = await run_sequential_travel_planner(travel_request)
+    # Run with visual progress tracking
+    markdown_plan, output_dir = await run_sequential_travel_planner(travel_request)
     
-    # Example usage without local saving
-    # markdown_plan = await run_sequential_travel_planner(travel_request, save_locally=False)
-    
-    # You can now use the returned markdown document
     if markdown_plan:
-        print(f"\nReturned markdown document length: {len(markdown_plan)} characters")
+        print(f"\n✅ Final markdown document length: {len(markdown_plan)} characters")
+        print(f"📁 All files saved to: {output_dir}")
 
 if __name__ == "__main__":
     asyncio.run(main())
