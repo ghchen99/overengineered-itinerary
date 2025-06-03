@@ -1,30 +1,54 @@
 import os
 import asyncio
-import re
-from dataclasses import dataclass
-from typing import Optional, Tuple
+import json
+from dataclasses import dataclass, asdict
+from typing import Optional, AsyncGenerator
 from datetime import datetime
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.teams import RoundRobinGroupChat
 from autogen_agentchat.conditions import MaxMessageTermination, TextMentionTermination
 from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
 
-@dataclass
-class TravelRequest:
-    """Data class to structure travel request parameters."""
+# FastAPI app
+app = FastAPI(title="Travel Planner API", version="1.0.0")
+
+# Pydantic models for API
+class TravelPlanRequest(BaseModel):
     destination_city: str
     destination_country: str
-    depart_date: str  # Already formatted from frontend
-    return_date: str  # Already formatted from frontend
+    depart_date: str  # YYYY-MM-DD format
+    return_date: str  # YYYY-MM-DD format
     priority: str = "all"  # scenery/food/history/culture/all
     budget_level: str = "flexible"  # budget/moderate/flexible/luxury
-    departure_airport: Optional[str] = None  # Optional, agents can infer
-    destination_airport: Optional[str] = None  # Optional, agents can infer
+    departure_airport: Optional[str] = None
+    destination_airport: Optional[str] = None
+    additional_preferences: Optional[str] = None
+
+class StreamMessage(BaseModel):
+    type: str  # "progress", "markdown_update", "final", "error"
+    agent: Optional[str] = None
+    content: str
+    timestamp: str
+    character_count: Optional[int] = None
+
+@dataclass
+class TravelRequest:
+    """Internal data class to structure travel request parameters."""
+    destination_city: str
+    destination_country: str
+    depart_date: str
+    return_date: str
+    priority: str = "all"
+    budget_level: str = "flexible"
+    departure_airport: Optional[str] = None
+    destination_airport: Optional[str] = None
     additional_preferences: Optional[str] = None
 
     def __post_init__(self):
         """Basic validation and normalization."""
-        # Normalize priority
         self.priority = self.priority.lower().strip()
         self.budget_level = self.budget_level.lower().strip()
 
@@ -79,7 +103,7 @@ def generate_travel_prompt(request: TravelRequest) -> str:
     
     interests = priority_mapping.get(request.priority, priority_mapping["all"])
     
-    # Build the prompt - let agents infer airports if not provided
+    # Build the prompt
     departure_info = f"from {request.departure_airport}" if request.departure_airport else "from my location"
     destination_info = f"to {request.destination_airport}" if request.destination_airport else ""
     
@@ -109,7 +133,7 @@ def create_model_client():
 def create_sequential_travel_team(model_client, travel_request: TravelRequest):
     """Create a sequential team that builds a single cohesive markdown document."""
     
-    # Enhanced Itinerary Agent with user preferences
+    # Enhanced Itinerary Agent
     itinerary_agent = AssistantAgent(
         name="ItineraryAgent",
         description="Creates personalized travel document based on user preferences.",
@@ -168,7 +192,7 @@ After creating the document, end with: "ITINERARY_COMPLETE - Ready for ImagesAge
         model_client=model_client,
     )
     
-    # Images Agent - Now embeds image link generation logic in system prompt
+    # Images Agent
     images_agent = AssistantAgent(
         name="ImagesAgent",
         description="Adds Google image search links to notable locations in the Day-by-Day Itinerary section.",
@@ -197,16 +221,11 @@ CRITICAL RULES:
 - Only add links to specific places, attractions, landmarks, temples, restaurants, etc.
 - Don't add links to generic words like "train", "hotel", "lunch"
 
-EXAMPLES:
-- "Senso-ji Temple" → [Senso-ji Temple](https://www.google.com/search?q=Senso-ji+Temple&tbm=isch)
-- "Tsukiji Outer Market" → [Tsukiji Outer Market](https://www.google.com/search?q=Tsukiji+Outer+Market&tbm=isch)
-- "Tokyo, Japan" → [Tokyo, Japan](https://www.google.com/search?q=Tokyo%2C+Japan&tbm=isch)
-
 After updating, end with: "IMAGES_COMPLETE - Ready for FlightsAgent".""",
         model_client=model_client,
     )
     
-    # Enhanced Flights Agent - Now embeds flight URL generation logic
+    # Flights Agent
     flights_agent = AssistantAgent(
         name="FlightsAgent", 
         description="Adds flight booking information using user's travel details.",
@@ -234,26 +253,10 @@ Once you determine the appropriate airports, generate these booking URLs:
 
 2. SKYSCANNER URL FORMAT:
    https://www.skyscanner.net/transport/flights/[from_lower]/[to_lower]/[YYMMDD]/[YYMMDD]/
-   (Note: Skyscanner uses YYMMDD format and lowercase airport codes)
 
-EXAMPLE:
-- From: LHR, To: NRT
-- Dates: 2025-10-10 to 2025-10-17
-- Kayak: https://www.kayak.co.uk/flights/LHR-NRT/2025-10-10/2025-10-17?sort=bestflight_a
-- Skyscanner: https://www.skyscanner.net/transport/flights/lhr/nrt/251010/251017/
+CRITICAL: You must preserve ALL existing content including all Google Images links added by ImagesAgent.
 
-CRITICAL: You must preserve ALL existing content including:
-- All Google Images links added by ImagesAgent in the itinerary section
-- All markdown formatting and structure
-- All location links like [Location Name](Google Images URL)
-
-Only replace the <!-- FLIGHTS_PLACEHOLDER --> section - leave everything else identical.
-
-Your job is to:
-1. Take the ENTIRE existing travel document 
-2. If airports are not specified, infer appropriate airport codes
-3. Generate the flight booking URLs using the formats above
-4. Replace "<!-- FLIGHTS_PLACEHOLDER -->" with this flight section:
+Only replace the <!-- FLIGHTS_PLACEHOLDER --> section with:
 
 ```markdown
 ## ✈️ Flight Information
@@ -266,13 +269,11 @@ Your job is to:
 - 🔗 **[Skyscanner - Flexible Dates]([SKYSCANNER_URL])**
 ```
 
-5. Return the COMPLETE updated document with all original content intact
-
 After updating, end with: "FLIGHTS_COMPLETE - Ready for AccommodationAgent".""",
         model_client=model_client,
     )
     
-    # Enhanced Accommodation Agent - Now embeds Airbnb URL generation logic
+    # Accommodation Agent
     accommodation_agent = AssistantAgent(
         name="AccommodationAgent",
         description="Adds accommodation information using user's travel details.",
@@ -284,25 +285,18 @@ USER'S ACCOMMODATION DETAILS:
 - Check-out: {travel_request.return_date}
 
 AIRBNB URL GENERATION:
-For each recommended base location in the travel document, generate Airbnb search URLs using this format:
-
+For each recommended base location, generate Airbnb search URLs using this format:
 https://www.airbnb.co.uk/s/[FORMATTED_DESTINATION]/homes?checkin=[YYYY-MM-DD]&checkout=[YYYY-MM-DD]&adults=2
 
 DESTINATION FORMATTING RULES:
 - Replace commas with "--"
 - Replace spaces with "-"
-- Keep the location name descriptive
-
-EXAMPLES:
-- "Tokyo, Japan" → "Tokyo--Japan"
-- "Shibuya District" → "Shibuya-District"
-- "New York City" → "New-York-City"
 
 Your job is to:
 1. Take the ENTIRE existing travel document
 2. Identify each recommended base location from the "🗺️ Recommended Base Locations" section
-3. Generate Airbnb URLs for each location using the format above
-4. Replace "<!-- ACCOMMODATION_PLACEHOLDER -->" with a complete accommodation section:
+3. Generate Airbnb URLs for each location
+4. Replace "<!-- ACCOMMODATION_PLACEHOLDER -->" with:
 
 ```markdown
 ## 🏠 Accommodation Options
@@ -311,9 +305,6 @@ Your job is to:
 
 #### [Location 1 Name]
 - 🔗 **[Browse Airbnb Properties]([AIRBNB_URL_1])**
-
-#### [Location 2 Name]  
-- 🔗 **[Browse Airbnb Properties]([AIRBNB_URL_2])**
 
 [Continue for each base location...]
 
@@ -324,18 +315,11 @@ Your job is to:
 - Look for properties with flexible cancellation policies
 ```
 
-5. Return the COMPLETE final travel document with all content intact
-
-Use these parameters for URL generation:
-- checkin: {travel_request.depart_date}
-- checkout: {travel_request.return_date}
-- guests: 2 (default)
-
 After completing, end with: "ACCOMMODATION_COMPLETE - Ready for CriticAgent".""",
         model_client=model_client,
     )
     
-    # Critic Agent - Reviews and outputs final document
+    # Critic Agent
     critic_agent = AssistantAgent(
         name="CriticAgent",
         description="Reviews the complete travel document and outputs the final markdown.",
@@ -343,29 +327,14 @@ After completing, end with: "ACCOMMODATION_COMPLETE - Ready for CriticAgent"."""
 
 Your job is to:
 1. Review the complete travel document for quality and completeness
-2. Ensure no placeholders remain (no "<!-- PLACEHOLDER -->" text)
-3. Verify all sections are properly filled out:
-   - Day-by-day itinerary with Google Images links for notable locations
-   - Flight information with working booking URLs
-   - Accommodation section with Airbnb search links
-4. Check that the document follows proper markdown formatting
-5. Ensure the content is coherent and well-organized
-6. Output "DOCUMENT_READY" followed by the final, clean markdown document
+2. Ensure no placeholders remain
+3. Check that the document follows proper markdown formatting
+4. Output "DOCUMENT_READY" followed by the final, clean markdown document
 
-QUALITY CHECKLIST:
-✅ No placeholder text remains
-✅ All notable locations in itinerary have Google Images links
-✅ Flight section has proper booking URLs
-✅ Accommodation section has Airbnb search links for each base location
-✅ Proper markdown formatting throughout
-✅ Content is tailored to user's preferences and budget level
-
-If the document is complete and properly formatted, respond with:
+If the document is complete, respond with:
 DOCUMENT_READY
 
-[Insert the complete final markdown document here]
-
-If anything is missing or incorrect, provide specific feedback on what needs to be fixed and ask the previous agent to make corrections.""",
+[Insert the complete final markdown document here]""",
         model_client=model_client,
     )
     
@@ -374,7 +343,7 @@ If anything is missing or incorrect, provide specific feedback on what needs to 
     text_termination = TextMentionTermination("DOCUMENT_READY")
     combined_termination = max_msg_termination | text_termination
     
-    # Create sequential team using RoundRobinGroupChat
+    # Create sequential team
     team = RoundRobinGroupChat(
         participants=[itinerary_agent, images_agent, flights_agent, accommodation_agent, critic_agent],
         termination_condition=combined_termination,
@@ -382,110 +351,155 @@ If anything is missing or incorrect, provide specific feedback on what needs to 
     
     return team
 
-async def run_sequential_travel_planner(travel_request: TravelRequest) -> Tuple[str, str]:
-    """Run the sequential travel planner and return the final markdown document.
+async def stream_travel_plan(travel_request: TravelRequest) -> AsyncGenerator[str, None]:
+    """Stream travel plan generation with real-time updates."""
     
-    Args:
-        travel_request: The travel request configuration
-        
-    Returns:
-        Tuple[str, str]: (final_markdown_document, progress_log)
-    """
-    print(f"\n{'='*80}\nRunning Sequential Travel Planner\n{'='*80}\n")
-    print(f"Destination: {travel_request.destination_city}, {travel_request.destination_country}")
-    print(f"Dates: {travel_request.depart_date} to {travel_request.return_date}")
-    print(f"Priority: {travel_request.priority}")
-    print(f"Budget: {travel_request.budget_level}")
-    if travel_request.departure_airport:
-        print(f"Departure Airport: {travel_request.departure_airport}")
-    if travel_request.destination_airport:
-        print(f"Destination Airport: {travel_request.destination_airport}")
-    print()
-    
-    # Generate the travel prompt from user input
-    travel_prompt = generate_travel_prompt(travel_request)
-    print("Generated Travel Prompt:")
-    print("-" * 40)
-    print(travel_prompt)
-    print("-" * 40 + "\n")
-    
-    model_client = create_model_client()
-    
-    # Store extracted markdown content and progress
-    extracted_content = {}
-    progress_log = []
-    final_document = ""
+    model_client = None
     
     try:
-        # Create the sequential team with user preferences
+        # Initial setup message
+        yield json.dumps(StreamMessage(
+            type="progress",
+            content=f"🚀 Starting travel plan generation for {travel_request.destination_city}, {travel_request.destination_country}",
+            timestamp=datetime.now().isoformat()
+        ).dict()) + "\n"
+        
+        # Generate travel prompt
+        travel_prompt = generate_travel_prompt(travel_request)
+        
+        yield json.dumps(StreamMessage(
+            type="progress",
+            content="📝 Generated travel prompt and initializing AI agents...",
+            timestamp=datetime.now().isoformat()
+        ).dict()) + "\n"
+        
+        # Create model client and team
+        model_client = create_model_client()
         team = create_sequential_travel_team(model_client, travel_request)
         
-        # Run the team with the generated prompt
+        yield json.dumps(StreamMessage(
+            type="progress",
+            content="🤖 AI agents ready - starting collaboration...",
+            timestamp=datetime.now().isoformat()
+        ).dict()) + "\n"
+        
+        # Track the latest markdown content
+        latest_markdown = ""
+        
+        # Run the team and stream updates
         stream = team.run_stream(task=travel_prompt)
         
-        # Process messages and extract markdown content
         async for message in stream:
-            print(f"---------- {type(message).__name__} ({getattr(message, 'source', 'system')}) ----------")
-            if hasattr(message, 'content'):
-                print(message.content)
+            if hasattr(message, 'content') and hasattr(message, 'source') and message.source:
+                agent_name = message.source
                 
-                # Extract markdown content from agent responses
-                if hasattr(message, 'source') and message.source:
-                    agent_name = message.source
+                # Send progress update
+                yield json.dumps(StreamMessage(
+                    type="progress",
+                    agent=agent_name,
+                    content=f"🔄 {agent_name} is working...",
+                    timestamp=datetime.now().isoformat()
+                ).dict()) + "\n"
+                
+                # Extract and check for markdown content
+                clean_content = extract_markdown_content(message.content)
+                
+                # Only send markdown updates if content is substantial and markdown-formatted
+                if len(clean_content) > 100 and clean_content.startswith('#'):
+                    latest_markdown = clean_content
                     
-                    # Extract clean markdown content
-                    clean_content = extract_markdown_content(message.content)
+                    # Determine if this is the final document
+                    is_final = agent_name == "CriticAgent" and "DOCUMENT_READY" in message.content
                     
-                    # Only store if content is substantial (not just status messages)
-                    if len(clean_content) > 100 and clean_content.startswith('#'):
-                        extracted_content[agent_name] = clean_content
-                        timestamp = datetime.now().strftime("%H:%M:%S")
-                        progress_entry = f"{timestamp} - {agent_name}: Extracted {len(clean_content)} characters of markdown"
-                        progress_log.append(progress_entry)
-                        print(f"📝 {progress_entry}")
-                        
-                        # If this is from CriticAgent and contains DOCUMENT_READY, it's the final version
-                        if agent_name == "CriticAgent" and "DOCUMENT_READY" in message.content:
-                            final_document = clean_content
-    finally:
-        # Close model client connections
-        await model_client.close()
-    
-    # If we don't have a final document from CriticAgent, use the last substantial content
-    if not final_document and extracted_content:
-        final_document = list(extracted_content.values())[-1]
-    
-    if final_document:
-        print(f"\n🎉 Complete travel plan generated!")
-        print(f"📄 Final document length: {len(final_document)} characters")
-        print(f"🔄 Processed {len(extracted_content)} agent responses with markdown content")
+                    yield json.dumps(StreamMessage(
+                        type="final" if is_final else "markdown_update",
+                        agent=agent_name,
+                        content=clean_content,
+                        timestamp=datetime.now().isoformat(),
+                        character_count=len(clean_content)
+                    ).dict()) + "\n"
+                    
+                    if is_final:
+                        yield json.dumps(StreamMessage(
+                            type="progress",
+                            content="✅ Travel plan complete!",
+                            timestamp=datetime.now().isoformat()
+                        ).dict()) + "\n"
+                        break
         
-        return final_document, "\n".join(progress_log)
-    else:
-        print("\n⚠️  Warning: Final document was not captured properly")
-        return "", "\n".join(progress_log)
+        # If we didn't get a final document, send the latest as final
+        if latest_markdown and not latest_markdown.startswith("✅"):
+            yield json.dumps(StreamMessage(
+                type="final",
+                content=latest_markdown,
+                timestamp=datetime.now().isoformat(),
+                character_count=len(latest_markdown)
+            ).dict()) + "\n"
+            
+    except Exception as e:
+        yield json.dumps(StreamMessage(
+            type="error",
+            content=f"❌ Error generating travel plan: {str(e)}",
+            timestamp=datetime.now().isoformat()
+        ).dict()) + "\n"
+        
+    finally:
+        if model_client:
+            try:
+                await model_client.close()
+            except:
+                pass
 
-async def main():
-    """Main function to run the travel planner."""
+@app.post("/generate-travel-plan")
+async def generate_travel_plan(request: TravelPlanRequest):
+    """Generate a travel plan with streaming updates."""
+    
+    try:
+        # Convert Pydantic model to internal dataclass
+        travel_request = TravelRequest(
+            destination_city=request.destination_city,
+            destination_country=request.destination_country,
+            depart_date=request.depart_date,
+            return_date=request.return_date,
+            priority=request.priority,
+            budget_level=request.budget_level,
+            departure_airport=request.departure_airport,
+            destination_airport=request.destination_airport,
+            additional_preferences=request.additional_preferences
+        )
+        
+        return StreamingResponse(
+            stream_travel_plan(travel_request),
+            media_type="application/x-ndjson",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+            }
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing request: {str(e)}")
 
-    travel_request = TravelRequest(
-        destination_city="Tokyo",
-        destination_country="Japan",
-        depart_date="2025-10-10",
-        return_date="2025-10-17",
-        departure_airport="LHR",  # Optional
-        priority="food",
-        budget_level="flexible",
-        additional_preferences="interested in temples and authentic experiences"
-    )
-    
-    # Run the travel planner
-    markdown_plan, progress = await run_sequential_travel_planner(travel_request)
-    
-    if markdown_plan:
-        print(f"\n✅ Final markdown document extracted successfully!")
-        print(f"📊 Progress log:")
-        print(progress)
+@app.get("/health")
+async def health_check():
+    """Health check endpoint."""
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+@app.get("/")
+async def root():
+    """Root endpoint with API information."""
+    return {
+        "message": "Travel Planner API",
+        "version": "1.0.0",
+        "endpoints": {
+            "generate_plan": "/generate-travel-plan (POST)",
+            "health": "/health (GET)"
+        }
+    }
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
