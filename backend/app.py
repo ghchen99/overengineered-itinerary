@@ -11,9 +11,23 @@ from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.teams import RoundRobinGroupChat
 from autogen_agentchat.conditions import MaxMessageTermination, TextMentionTermination
 from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
+from fastapi.middleware.cors import CORSMiddleware
 
 # FastAPI app
 app = FastAPI(title="Travel Planner API", version="1.0.0")
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",  # Next.js dev server
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",  # Alternative port
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 # Pydantic models for API
 class TravelPlanRequest(BaseModel):
@@ -292,6 +306,17 @@ DESTINATION FORMATTING RULES:
 - Replace commas with "--"
 - Replace spaces with "-"
 
+CRITICAL INSTRUCTIONS:
+1. You MUST output the COMPLETE travel document 
+2. You MUST preserve ALL existing content including:
+   - The complete Day-by-Day Itinerary
+   - All Google Images links added by ImagesAgent
+   - The Flight Information section added by FlightsAgent
+   - All other sections and content
+3. ONLY replace the "<!-- ACCOMMODATION_PLACEHOLDER -->" with the accommodation section
+4. DO NOT truncate, shorten, or omit any existing content
+
+
 Your job is to:
 1. Take the ENTIRE existing travel document
 2. Identify each recommended base location from the "🗺️ Recommended Base Locations" section
@@ -327,14 +352,16 @@ After completing, end with: "ACCOMMODATION_COMPLETE - Ready for CriticAgent"."""
 
 Your job is to:
 1. Review the complete travel document for quality and completeness
-2. Ensure no placeholders remain
+2. Ensure no placeholders remain (<!-- PLACEHOLDER --> tags)
 3. Check that the document follows proper markdown formatting
-4. Output "DOCUMENT_READY" followed by the final, clean markdown document
+4. PRESERVE all Google Images links added by ImagesAgent
+5. PRESERVE all booking links added by FlightsAgent and AccommodationAgent
+6. Only make formatting improvements, not content removals
 
 If the document is complete, respond with:
 DOCUMENT_READY
 
-[Insert the complete final markdown document here]""",
+[Insert the complete final markdown document here with ALL links preserved]""",
         model_client=model_client,
     )
     
@@ -362,7 +389,7 @@ async def stream_travel_plan(travel_request: TravelRequest) -> AsyncGenerator[st
             type="progress",
             content=f"🚀 Starting travel plan generation for {travel_request.destination_city}, {travel_request.destination_country}",
             timestamp=datetime.now().isoformat()
-        ).dict()) + "\n"
+        ).model_dump()) + "\n"
         
         # Generate travel prompt
         travel_prompt = generate_travel_prompt(travel_request)
@@ -371,7 +398,7 @@ async def stream_travel_plan(travel_request: TravelRequest) -> AsyncGenerator[st
             type="progress",
             content="📝 Generated travel prompt and initializing AI agents...",
             timestamp=datetime.now().isoformat()
-        ).dict()) + "\n"
+        ).model_dump()) + "\n"
         
         # Create model client and team
         model_client = create_model_client()
@@ -381,7 +408,7 @@ async def stream_travel_plan(travel_request: TravelRequest) -> AsyncGenerator[st
             type="progress",
             content="🤖 AI agents ready - starting collaboration...",
             timestamp=datetime.now().isoformat()
-        ).dict()) + "\n"
+        ).model_dump()) + "\n"
         
         # Track the latest markdown content
         latest_markdown = ""
@@ -399,7 +426,7 @@ async def stream_travel_plan(travel_request: TravelRequest) -> AsyncGenerator[st
                     agent=agent_name,
                     content=f"🔄 {agent_name} is working...",
                     timestamp=datetime.now().isoformat()
-                ).dict()) + "\n"
+                ).model_dump()) + "\n"
                 
                 # Extract and check for markdown content
                 clean_content = extract_markdown_content(message.content)
@@ -417,14 +444,14 @@ async def stream_travel_plan(travel_request: TravelRequest) -> AsyncGenerator[st
                         content=clean_content,
                         timestamp=datetime.now().isoformat(),
                         character_count=len(clean_content)
-                    ).dict()) + "\n"
+                    ).model_dump()) + "\n"
                     
                     if is_final:
                         yield json.dumps(StreamMessage(
                             type="progress",
                             content="✅ Travel plan complete!",
                             timestamp=datetime.now().isoformat()
-                        ).dict()) + "\n"
+                        ).model_dump()) + "\n"
                         break
         
         # If we didn't get a final document, send the latest as final
@@ -434,14 +461,14 @@ async def stream_travel_plan(travel_request: TravelRequest) -> AsyncGenerator[st
                 content=latest_markdown,
                 timestamp=datetime.now().isoformat(),
                 character_count=len(latest_markdown)
-            ).dict()) + "\n"
+            ).model_dump()) + "\n"
             
     except Exception as e:
         yield json.dumps(StreamMessage(
             type="error",
             content=f"❌ Error generating travel plan: {str(e)}",
             timestamp=datetime.now().isoformat()
-        ).dict()) + "\n"
+        ).model_dump()) + "\n"
         
     finally:
         if model_client:

@@ -2,6 +2,7 @@
 """
 Test script for the Travel Planner FastAPI streaming endpoint.
 This script demonstrates how to consume the streaming travel plan generation API.
+Updated to print full markdown content instead of previews.
 """
 
 import requests
@@ -121,18 +122,26 @@ def test_travel_api(base_url: str = "http://localhost:8000"):
                 elif msg_type == "markdown_update":
                     latest_markdown = content
                     print(f"[{time_str}] 📝 [{agent}] Updated travel plan ({char_count:,} chars)")
-                    
-                    # Show a preview of the markdown (first few lines)
-                    preview_lines = content.split('\n')[:3]
-                    for line in preview_lines:
-                        if line.strip():
-                            print(f"        {line[:80]}{'...' if len(line) > 80 else ''}")
+                    print("-" * 80)
+                    print("📄 FULL MARKDOWN CONTENT:")
+                    print("-" * 80)
+                    print(content)
+                    print("-" * 80)
+                    print("END OF MARKDOWN UPDATE")
+                    print("-" * 80)
                     print()
                     
                 elif msg_type == "final":
                     latest_markdown = content
                     print(f"[{time_str}] 🎉 [{agent or 'System'}] FINAL DOCUMENT READY!")
                     print(f"        📄 Total length: {char_count:,} characters")
+                    print("=" * 80)
+                    print("🎯 FINAL COMPLETE TRAVEL PLAN:")
+                    print("=" * 80)
+                    print(content)
+                    print("=" * 80)
+                    print("END OF FINAL TRAVEL PLAN")
+                    print("=" * 80)
                     break
                     
                 elif msg_type == "error":
@@ -157,18 +166,6 @@ def test_travel_api(base_url: str = "http://localhost:8000"):
         print(f"📨 Messages received: {message_count}")
         print(f"🤖 Agents involved: {', '.join(sorted(agents_seen))}")
         print(f"📄 Final document length: {len(latest_markdown):,} characters")
-        
-        if latest_markdown:
-            print("\n" + "-" * 80)
-            print("📋 FINAL TRAVEL PLAN PREVIEW (first 500 chars):")
-            print("-" * 80)
-            print(latest_markdown[:500] + "..." if len(latest_markdown) > 500 else latest_markdown)
-            
-            # Optionally save to file
-            filename = f"travel_plan_{travel_request['destination_city'].lower()}_{int(time.time())}.md"
-            with open(filename, 'w', encoding='utf-8') as f:
-                f.write(latest_markdown)
-            print(f"\n💾 Full travel plan saved to: {filename}")
         
     except requests.exceptions.Timeout:
         print("⏰ Request timed out - the API might be taking too long to respond")
@@ -209,26 +206,46 @@ def test_multiple_destinations():
                 "http://localhost:8000/generate-travel-plan",
                 json=travel_request,
                 stream=True,
-                timeout=60
+                timeout=120  # Increased timeout since we're showing full content
             )
             
             if response.status_code == 200:
-                # Just count messages, don't process fully
                 message_count = 0
                 for line in response.iter_lines(decode_unicode=True):
                     if line.strip():
-                        message_count += 1
-                        if message_count > 10:  # Stop early for testing
-                            break
-                print(f"   ✅ API responding ({message_count} messages received)")
+                        try:
+                            message = json.loads(line)
+                            message_count += 1
+                            
+                            msg_type = message.get("type", "unknown")
+                            content = message.get("content", "")
+                            
+                            # For multiple destination testing, show progress but limit full markdown output
+                            if msg_type == "progress":
+                                print(f"   📋 {content}")
+                            elif msg_type == "markdown_update":
+                                print(f"   📝 Markdown updated ({len(content):,} chars)")
+                            elif msg_type == "final":
+                                print(f"   🎉 Final plan ready ({len(content):,} chars)")
+                                print("-" * 60)
+                                print("FINAL PLAN:")
+                                print(content)
+                                print("-" * 60)
+                                break
+                                
+                        except json.JSONDecodeError:
+                            continue
+                            
+                print(f"   ✅ Completed ({message_count} messages)")
             else:
                 print(f"   ❌ Failed: {response.status_code}")
                 
         except Exception as e:
             print(f"   ❌ Error: {e}")
         
-        # Small delay between tests
-        time.sleep(2)
+        # Delay between tests
+        print(f"   ⏳ Waiting before next test...")
+        time.sleep(3)
 
 if __name__ == "__main__":
     import argparse
