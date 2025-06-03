@@ -78,24 +78,125 @@ export function MarkdownRenderer({
         </div>
       </CardHeader>
       <CardContent>
-        <div className="prose prose-sm max-w-none">
+        <div className="max-w-none text-sm leading-relaxed">
           <ReactMarkdown
             components={{
-              h1: ({ children }) => <h1 className="text-2xl font-bold mb-4 text-foreground">{children}</h1>,
-              h2: ({ children }) => <h2 className="text-xl font-semibold mb-3 text-foreground">{children}</h2>,
-              h3: ({ children }) => <h3 className="text-lg font-medium mb-2 text-foreground">{children}</h3>,
-              p: ({ children }) => <p className="mb-3 text-foreground">{children}</p>,
-              ul: ({ children }) => <ul className="mb-3 ml-4 list-disc">{children}</ul>,
-              ol: ({ children }) => <ol className="mb-3 ml-4 list-decimal">{children}</ol>,
-              li: ({ children }) => <li className="mb-1">{children}</li>,
-              strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-              em: ({ children }) => <em className="italic">{children}</em>,
+              h1: ({ children }) => (
+                <h1 className="text-xl font-bold mb-4 text-foreground border-b border-border pb-2">
+                  {children}
+                </h1>
+              ),
+              h2: ({ children }) => (
+                <h2 className="text-lg font-semibold mb-3 mt-6 text-foreground">
+                  {children}
+                </h2>
+              ),
+              h3: ({ children }) => (
+                <h3 className="text-base font-medium mb-2 mt-4 text-foreground">
+                  {children}
+                </h3>
+              ),
+              h4: ({ children }) => (
+                <h4 className="text-sm font-medium mb-2 mt-3 text-muted-foreground uppercase tracking-wide">
+                  {children}
+                </h4>
+              ),
+              p: ({ children }) => (
+                <p className="mb-3 text-foreground leading-relaxed">
+                  {children}
+                </p>
+              ),
+              ul: ({ children }) => (
+                <ul className="mb-4 ml-4 space-y-1 list-disc marker:text-muted-foreground">
+                  {children}
+                </ul>
+              ),
+              ol: ({ children }) => (
+                <ol className="mb-4 ml-4 space-y-1 list-decimal marker:text-muted-foreground">
+                  {children}
+                </ol>
+              ),
+              li: ({ children }) => (
+                <li className="text-foreground leading-relaxed pl-1">
+                  {children}
+                </li>
+              ),
+              blockquote: ({ children }) => (
+                <blockquote className="border-l-4 border-blue-200 pl-4 py-2 mb-4 bg-blue-50/50 italic text-muted-foreground">
+                  {children}
+                </blockquote>
+              ),
+              code: ({ children, className }) => {
+                const isInline = !className;
+                if (isInline) {
+                  return (
+                    <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono text-foreground">
+                      {children}
+                    </code>
+                  );
+                }
+                return (
+                  <code className="block bg-muted p-3 rounded-md text-xs font-mono overflow-x-auto">
+                    {children}
+                  </code>
+                );
+              },
+              pre: ({ children }) => (
+                <pre className="mb-4 overflow-x-auto">
+                  {children}
+                </pre>
+              ),
+              table: ({ children }) => (
+                <div className="overflow-x-auto mb-4">
+                  <table className="min-w-full border-collapse border border-border text-xs">
+                    {children}
+                  </table>
+                </div>
+              ),
+              thead: ({ children }) => (
+                <thead className="bg-muted">
+                  {children}
+                </thead>
+              ),
+              tbody: ({ children }) => (
+                <tbody>
+                  {children}
+                </tbody>
+              ),
+              tr: ({ children }) => (
+                <tr className="border-b border-border">
+                  {children}
+                </tr>
+              ),
+              th: ({ children }) => (
+                <th className="border border-border px-3 py-2 text-left font-medium">
+                  {children}
+                </th>
+              ),
+              td: ({ children }) => (
+                <td className="border border-border px-3 py-2">
+                  {children}
+                </td>
+              ),
+              hr: () => (
+                <hr className="my-6 border-border" />
+              ),
+              strong: ({ children }) => (
+                <strong className="font-semibold text-foreground">
+                  {children}
+                </strong>
+              ),
+              em: ({ children }) => (
+                <em className="italic text-foreground">
+                  {children}
+                </em>
+              ),
               a: ({ children, href }) => (
                 <a 
                   href={href} 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="text-blue-600 hover:text-blue-800 underline transition-colors"
+                  className="text-blue-600 hover:text-blue-800 underline decoration-blue-300 underline-offset-2 transition-colors font-medium"
                 >
                   {children}
                 </a>
