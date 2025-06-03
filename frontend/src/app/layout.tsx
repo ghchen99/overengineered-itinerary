@@ -5,8 +5,8 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata = {
-  title: 'AI Travel Planner',
-  description: 'Create personalized travel itineraries with AI assistance',
+  title: 'Ctrl+Trip',
+  description: 'No humans were stressed in the making of this trip.',
 };
 
 export default function RootLayout({

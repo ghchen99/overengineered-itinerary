@@ -126,9 +126,9 @@ export function StreamingDisplay() {
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8 space-y-8">
         <div className="text-center space-y-2">
-          <h1 className="text-3xl font-bold">AI Travel Planner</h1>
+          <h1 className="text-3xl font-bold">Ctrl+Trip</h1>
           <p className="text-muted-foreground">
-            Create personalized travel itineraries with real-time AI assistance
+            No humans were stressed in the making of this trip.
           </p>
         </div>
 
