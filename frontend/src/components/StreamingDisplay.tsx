@@ -154,14 +154,14 @@ export function StreamingDisplay() {
           </Alert>
         )}
 
-        {/* Main Form */}
-        <TravelPlannerForm onSubmit={handleSubmit} isLoading={isLoading} />
+        {/* Main Form - Only show when not loading and no messages */}
+        {!isLoading && messages.length === 0 && (
+          <TravelPlannerForm onSubmit={handleSubmit} isLoading={isLoading} />
+        )}
 
-        {/* Results Section */}
+        {/* Results Section - Show when loading or have messages */}
         {(isLoading || messages.length > 0) && (
           <>
-            <Separator />
-            
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               {/* Agent Activity - Takes 1/3 width on large screens */}
               <div className="lg:col-span-1">
