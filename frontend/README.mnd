@@ -1,0 +1,282 @@
+# 🌍 Travel Planner Frontend
+
+A modern, real-time frontend for the AI Travel Planner API built with Next.js 14, TypeScript, and Tailwind CSS. This application provides an intuitive interface for creating personalized travel itineraries with live agent activity monitoring and streaming markdown updates.
+
+![Travel Planner Demo](https://via.placeholder.com/800x400/3B82F6/FFFFFF?text=Travel+Planner+Frontend)
+
+## ✨ Features
+
+- **🚀 Real-time Streaming**: Watch as AI agents work on different aspects of your travel plan
+- **🤖 Agent Activity Monitoring**: Live dashboard showing which agents are active and their current tasks
+- **📝 Live Markdown Updates**: Travel plans update in real-time with visual highlighting of new content
+- **🎨 Modern UI**: Clean, responsive design using shadcn/ui components
+- **📱 Mobile Responsive**: Works seamlessly on desktop, tablet, and mobile devices
+- **🔗 Smart Link Handling**: Travel plan links are highlighted and open safely in new tabs
+- **⚡ Fast Performance**: Built with Next.js 14 App Router for optimal performance
+- **🎯 TypeScript**: Full type safety throughout the application
+
+## 🛠️ Tech Stack
+
+- **Framework**: Next.js 14 with App Router
+- **Language**: TypeScript
+- **Styling**: Tailwind CSS
+- **UI Components**: shadcn/ui
+- **Icons**: Lucide React
+- **Markdown**: react-markdown
+- **Date Handling**: date-fns
+
+## 📋 Prerequisites
+
+- Node.js 18+ 
+- npm or yarn or pnpm
+- Travel Planner API server running on `localhost:8000`
+
+## 🚀 Quick Start
+
+### 1. Create the Next.js Project
+
+```bash
+npx create-next-app@latest frontend --typescript --tailwind --eslint --app --src-dir
+cd frontend
+```
+
+### 2. Initialize shadcn/ui
+
+```bash
+npx shadcn@latest init
+```
+
+When prompted, choose:
+- Style: **Default**
+- Base color: **Slate**
+- CSS variables: **Yes**
+
+### 3. Install Required Components
+
+```bash
+npx shadcn@latest add button input label select textarea card badge progress separator alert
+```
+
+### 4. Install Additional Dependencies
+
+```bash
+npm install lucide-react date-fns react-markdown
+```
+
+### 5. Add Project Files
+
+Create the following directory structure and copy the provided code:
+
+```
+src/
+├── app/
+│   ├── globals.css
+│   ├── layout.tsx
+│   └── page.tsx
+├── components/
+│   ├── ui/ (shadcn components - auto-generated)
+│   ├── TravelPlannerForm.tsx
+│   ├── StreamingDisplay.tsx
+│   ├── AgentActivity.tsx
+│   └── MarkdownRenderer.tsx
+├── lib/
+│   ├── utils.ts (shadcn - auto-generated)
+│   └── api.ts
+└── types/
+    └── index.ts
+```
+
+### 6. Start Development Server
+
+```bash
+npm run dev
+```
+
+Visit [http://localhost:3000](http://localhost:3000) to see the application.
+
+## 🎯 Usage
+
+### Planning a Trip
+
+1. **Fill out the travel form** with your preferences:
+   - Destination city and country
+   - Travel dates
+   - Departure/destination airports
+   - Travel priority (food, culture, history, adventure, relaxation)
+   - Budget level (budget, moderate, flexible, luxury)
+   - Additional preferences
+
+2. **Submit your request** by clicking "Create Travel Plan"
+
+3. **Watch the magic happen**:
+   - The form disappears and is replaced by the results interface
+   - Agent activity panel shows which AI agents are working
+   - Travel plan appears and updates in real-time
+   - New content is highlighted as it's added
+
+4. **Interact with your plan**:
+   - Click on blue links to explore recommendations
+   - Watch as different agents contribute different sections
+   - See the character count and last update time
+
+### API Integration
+
+The frontend connects to your Travel Planner API server running on `localhost:8000`. Make sure your API server is running with the following endpoints:
+
+- `GET /health` - Health check endpoint
+- `POST /generate-travel-plan` - Streaming travel plan generation
+
+## 🔧 Configuration
+
+### API Base URL
+
+By default, the app connects to `http://localhost:8000`. To change this, modify the `TravelPlannerAPI` constructor in `src/lib/api.ts`:
+
+```typescript
+constructor(baseUrl: string = 'http://your-api-server.com') {
+  this.baseUrl = baseUrl;
+}
+```
+
+### Styling Customization
+
+The app uses Tailwind CSS with shadcn/ui. To customize:
+
+- **Colors**: Edit `tailwind.config.js` or use CSS variables in `globals.css`
+- **Components**: Modify shadcn components in `src/components/ui/`
+- **Layout**: Update component files in `src/components/`
+
+## 📱 Responsive Design
+
+The application is fully responsive with optimized layouts for:
+
+- **Desktop** (1024px+): Two-column layout with agent activity sidebar
+- **Tablet** (768px-1023px): Stacked layout with full-width components
+- **Mobile** (< 768px): Single-column mobile-optimized layout
+
+## 🎨 Component Architecture
+
+### Core Components
+
+- **`StreamingDisplay`**: Main container managing state and API communication
+- **`TravelPlannerForm`**: Travel preferences input form
+- **`AgentActivity`**: Real-time agent status monitoring
+- **`MarkdownRenderer`**: Enhanced markdown display with syntax highlighting
+
+### Type Definitions
+
+```typescript
+interface TravelRequest {
+  destination_city: string;
+  destination_country: string;
+  depart_date: string;
+  return_date: string;
+  priority: 'food' | 'culture' | 'history' | 'adventure' | 'relaxation';
+  budget_level: 'budget' | 'moderate' | 'flexible' | 'luxury';
+  departure_airport: string;
+  destination_airport?: string;
+  additional_preferences?: string;
+}
+```
+
+## 🚦 API Message Format
+
+The frontend expects streaming responses in NDJSON format:
+
+```json
+{
+  "type": "progress" | "markdown_update" | "final" | "error",
+  "agent": "string",
+  "content": "string",
+  "timestamp": "ISO date string",
+  "character_count": 12345
+}
+```
+
+## 🛡️ Error Handling
+
+The application includes comprehensive error handling:
+
+- **Connection Issues**: Displays retry button for API connectivity
+- **Streaming Errors**: Shows error messages from the API
+- **Network Timeouts**: 5-minute timeout with user feedback
+- **Parsing Errors**: Gracefully handles malformed messages
+
+## 🚀 Deployment
+
+### Vercel (Recommended)
+
+```bash
+npm run build
+npx vercel --prod
+```
+
+### Docker
+
+```dockerfile
+FROM node:18-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+COPY . .
+RUN npm run build
+EXPOSE 3000
+CMD ["npm", "start"]
+```
+
+### Environment Variables
+
+For production deployment, set:
+
+```bash
+NEXT_PUBLIC_API_URL=https://your-api-server.com
+```
+
+## 🔍 Troubleshooting
+
+### Common Issues
+
+**"Cannot connect to Travel Planner API"**
+- Ensure your API server is running on `localhost:8000`
+- Check that the `/health` endpoint returns 200 OK
+- Verify CORS is configured on your API server
+
+**Form not submitting**
+- Check browser console for JavaScript errors
+- Verify all required fields are filled
+- Ensure API server is accepting POST requests
+
+**Streaming not working**
+- Confirm your API supports `application/x-ndjson` content type
+- Check that the API sends proper NDJSON format
+- Verify the streaming endpoint returns chunked responses
+
+### Development Tips
+
+- Use browser DevTools Network tab to debug API calls
+- Check the Console for any React warnings or errors
+- Use React DevTools to inspect component state
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Commit your changes: `git commit -m 'Add amazing feature'`
+4. Push to the branch: `git push origin feature/amazing-feature`
+5. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🙏 Acknowledgments
+
+- [Next.js](https://nextjs.org/) - The React framework
+- [shadcn/ui](https://ui.shadcn.com/) - Beautiful UI components
+- [Tailwind CSS](https://tailwindcss.com/) - Utility-first CSS framework
+- [Lucide](https://lucide.dev/) - Beautiful icons
+- [react-markdown](https://github.com/remarkjs/react-markdown) - Markdown rendering
+
+---
+
+**Built with ❤️ for seamless travel planning experiences**
